@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { RefObject } from "react";
-import { AlertCircle, Download, Film, Layers, Loader2, Music, Pause, Play, RefreshCw, RotateCcw, RotateCw, Trash2, Volume2 } from "lucide-react";
+import { AlertCircle, Download, Film, Layers, Loader2, Music, Pause, Play, RotateCcw, RotateCw, Trash2, Volume2 } from "lucide-react";
 import type { FormatOption } from "../../types";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
 
