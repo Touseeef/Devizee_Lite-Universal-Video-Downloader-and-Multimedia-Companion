@@ -12,6 +12,7 @@ import {
     Pause,
     Play,
     PlayCircle,
+    RefreshCw,
     RotateCcw,
     Trash2,
     X,
@@ -42,6 +43,7 @@ export const HistoryItem = React.memo(function HistoryItem({
     onPause,
     onResume,
     onCancel,
+    onRefreshUrl,
     tOpenFolder,
     tOpenFile,
     tRemoveRow,
@@ -57,6 +59,7 @@ export const HistoryItem = React.memo(function HistoryItem({
     onPause?: () => void;
     onResume?: () => void;
     onCancel?: () => void;
+    onRefreshUrl?: () => void;
     tOpenFolder: string;
     tOpenFile: string;
     tRemoveRow: string;
@@ -237,6 +240,24 @@ export const HistoryItem = React.memo(function HistoryItem({
                                 <span>Retry</span>
                             </button>
                         )}
+
+                        {/* F-13: Refresh URL — only for expired tokens / network drops */}
+                        {record.status === "error"
+                            && onRefreshUrl
+                            && (record.error_code === "unavailable" || record.error_code === "network") && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRefreshUrl();
+                                    }}
+                                    className="px-2.5 py-1 rounded-md bg-status-warning hover:bg-status-warning/90 text-white flex items-center gap-1 text-[11px] font-semibold transition-all active:scale-95 shrink-0 cursor-pointer"
+                                    title="Paste a fresh URL to resume from .part file"
+                                >
+                                    <RefreshCw size={11} />
+                                    <span>Refresh URL</span>
+                                </button>
+                            )}
 
                         {/* Image 4 Clean Action Icons Row: Folder -> Trash -> Link -> Play (Red Circle) -> 3-dots */}
                         <div className="flex items-center gap-1 ml-1">

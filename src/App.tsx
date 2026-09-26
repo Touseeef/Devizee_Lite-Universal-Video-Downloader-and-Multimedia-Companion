@@ -40,6 +40,8 @@ import { PlaylistPanel } from "./components/downloads/PlaylistPanel";
 import { BatchProgress } from "./components/downloads/BatchProgress";
 import { DuplicateDialog } from "./components/common/DuplicateDialog";
 import type { DuplicateDialogState } from "./components/common/DuplicateDialog";
+import { RefreshUrlDialog } from "./components/common/RefreshUrlDialog";
+import type { RefreshUrlDialogState } from "./components/common/RefreshUrlDialog";
 import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
 import { AppShell } from "./components/layout/AppShell";
 import { Sidebar } from "./components/layout/Sidebar";
@@ -61,6 +63,7 @@ export default function App() {
   const [batchQueueItems, setBatchQueueItems] = useState<BatchItem[]>([]);
   const [showPreviews, setShowPreviews] = useState(true);
   const [duplicateDialog, setDuplicateDialog] = useState<DuplicateDialogState | null>(null);
+  const [refreshUrlDialog, setRefreshUrlDialog] = useState<RefreshUrlDialogState | null>(null);
   const [selectedHistoryItems, setSelectedHistoryItems] = useState<Set<string>>(new Set());
   const [confirmDialogState, setConfirmDialogState] = useState<{
     isOpen: boolean;
@@ -965,6 +968,25 @@ export default function App() {
       unlisten.then((f) => f());
     };
   }, []);
+
+  // SC-1: Sleep/wake listener — backend kills active downloads after wake
+  // and emits this event. Show a notification and refresh the history so
+  // the Interrupted status appears immediately.
+  useEffect(() => {
+    const unlisten = listen("system-woke-from-sleep", () => {
+      if (settings.showNotifications) {
+        sendNotification({
+          title: "Devizee - Downloads Paused After Sleep",
+          body: "Your system woke from sleep. Interrupted downloads can be resumed from the Downloads tab.",
+        });
+      }
+      loadHistory();
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.showNotifications]);
 
 
   // Listen to YouTube iframe state changes so nowPlaying and audio exclusivity reflect reality.
@@ -1947,6 +1969,93 @@ export default function App() {
 
 
   // W2-10: Accept a resolved list of {entry, preset} from PlaylistPanel.
+  // F-13: Refresh a download's URL and resume from the existing .part file.
+  // yt-dlp's native resume logic continues from where the .part left off,
+  // so no backend changes are needed — we just pass the fresh URL through.
+  const handleRefreshUrl = async (record: DownloadRecord, newUrl: string) => {
+    const isAudio = isAudioFormat(record.format);
+    const extMatch = record.format.match(/\(([A-Z0-9]+)\)/i);
+    const ext = extMatch ? extMatch[1].toLowerCase() : (isAudio ? "mp3" : "mp4");
+    const formatId = isAudio
+      ? "bestaudio/best"
+      : (record.format.includes("[") ? record.format : "bestvideo+bestaudio/best");
+
+    // Optimistically update state so the UI reflects the retry immediately
+    setHistory((prev) =>
+      prev.map((r) =>
+        r.id === record.id
+          ? {
+            ...r,
+            url: newUrl,
+            status: "starting" as const,
+            percent: 0,
+            speed: "0 B/s",
+            eta: "--",
+            error_code: undefined,
+            error_message: undefined,
+          }
+          : r
+      )
+    );
+
+    setActiveCardTaskId(record.id);
+    setRefreshUrlDialog(null);
+
+    const speedLimitArg =
+      settings.speedLimit === "unlimited"
+        ? null
+        : settings.speedLimit === "custom"
+          ? settings.customSpeedLimit
+          : settings.speedLimit;
+
+    const proxyArg = settings.proxyEnabled && settings.proxyHost
+      ? `${settings.proxyProtocol}://${settings.proxyHost}:${settings.proxyPort}`
+      : null;
+
+    try {
+      await invoke("start_download", {
+        taskId: record.id,
+        url: newUrl,                              // ← fresh URL
+        title: record.title,
+        formatId: formatId,
+        formatLabel: record.format,
+        isAudioOnly: isAudio,
+        ext: ext,
+        baseDir: settings.saveFolder,
+        videoDir: settings.videoFolder,
+        audioDir: settings.audioFolder,
+        docsDir: settings.generalFolder,
+        compDir: settings.compressedFolder,
+        progDir: settings.programsFolder,
+        tempDir: settings.tempFolder,
+        speedLimit: speedLimitArg,
+        proxy: proxyArg,
+        customFlags: settings.customFlags ? settings.customFlags : null,
+        scanAntivirus: settings.scanAntivirus,
+        downloadSections: null,
+        // "overwrite" here means "keep the .part and continue" — yt-dlp's
+        // --force-overwrites flag combined with the existing .part file
+        // results in a resume, not a restart.
+        duplicateAction: "overwrite",
+        estimatedSizeBytes: record.file_size ?? null,
+      });
+    } catch (e: any) {
+      console.error("Refresh URL failed:", e);
+      setHistory((prev) =>
+        prev.map((r) =>
+          r.id === record.id
+            ? {
+              ...r,
+              status: "error" as const,
+              error_code: "spawn_failed",
+              error_message: e.toString(),
+            }
+            : r
+        )
+      );
+    }
+  };
+
   const handleBatchDownload = async (items: { entry: PlaylistEntry; preset: string }[]) => {
     if (!playlistInfo || !items || items.length === 0) return;
 
@@ -2514,6 +2623,14 @@ export default function App() {
             onCancelDownload={handleCancelDownload}
             onPauseSelected={handlePauseSelected}
             onResumeSelected={handleResumeSelected}
+            onRefreshUrl={(record) => {
+              setRefreshUrlDialog({
+                isOpen: true,
+                record,
+                oldUrl: record.url,
+                errorCode: record.error_code,
+              });
+            }}
           />
         </div>
 
@@ -2588,6 +2705,14 @@ export default function App() {
             setDuplicateDialog(null);
           }}
           onCancel={() => setDuplicateDialog(null)}
+        />
+      )}
+
+      {refreshUrlDialog && (
+        <RefreshUrlDialog
+          state={refreshUrlDialog}
+          onResume={handleRefreshUrl}
+          onCancel={() => setRefreshUrlDialog(null)}
         />
       )}
 

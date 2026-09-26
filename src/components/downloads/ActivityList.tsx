@@ -41,6 +41,7 @@ export const ActivityList = React.memo(function ActivityList({
     onPause,
     onResume,
     onCancel,
+    onRefreshUrl,
 }: {
     t: (key: TranslationKey) => string;
     isOnline: boolean;
@@ -61,6 +62,7 @@ export const ActivityList = React.memo(function ActivityList({
     onPause?: (id: string) => void;
     onResume?: (record: DownloadRecord) => void;
     onCancel?: (id: string) => void;
+    onRefreshUrl?: (record: DownloadRecord) => void;
 }) {
     const allSelected =
         sortedHistory.length > 0 &&
@@ -196,6 +198,7 @@ export const ActivityList = React.memo(function ActivityList({
                                         onPause={onPause ? () => onPause(record.id) : undefined}
                                         onResume={onResume ? () => onResume(record) : undefined}
                                         onCancel={onCancel ? () => onCancel(record.id) : undefined}
+                                        onRefreshUrl={onRefreshUrl ? () => onRefreshUrl(record) : undefined}
                                         tOpenFolder={t("open_folder")}
                                         tOpenFile={t("open_file")}
                                         tRemoveRow={t("remove_row")}
