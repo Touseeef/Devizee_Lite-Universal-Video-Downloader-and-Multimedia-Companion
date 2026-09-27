@@ -2496,6 +2496,7 @@ export default function App() {
       <audio
         ref={audioRef}
         preload="auto"
+        crossOrigin="anonymous"
         onPlay={() => {
           setisAudioElementPlaying(true);
         }}

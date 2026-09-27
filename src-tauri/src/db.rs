@@ -27,9 +27,13 @@ pub struct DownloadRecord {
 fn open_and_validate(path: &std::path::Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
 
-    // quick_check is ~10x faster than integrity_check and catches the vast
-    // majority of corruption cases (page-level structural damage, broken
-    // B-tree pointers, etc.). Perfect for a startup sanity gate.
+    // Bug 4: force WAL checkpoint BEFORE quick_check. On a dirty shutdown,
+    // the WAL file may still contain pending writes that haven't been
+    // flushed to the main DB. Running quick_check first can spuriously
+    // report "not ok" and trigger a false quarantine that loses history.
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let _ = conn.execute("PRAGMA wal_checkpoint(PASSIVE)", []);
+
     let check_result: Result<String> =
         conn.query_row("PRAGMA quick_check(1)", [], |row| row.get(0));
 

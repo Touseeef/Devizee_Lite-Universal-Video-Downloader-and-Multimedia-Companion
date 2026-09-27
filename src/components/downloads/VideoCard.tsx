@@ -290,6 +290,7 @@ export function VideoCard({
                                         src={videoStreamUrl}
                                         controls
                                         autoPlay
+                                        crossOrigin="anonymous"
                                         onEnded={handleVideoEnded}
                                         onPlay={() => {
                                             stopAudioPlayback();

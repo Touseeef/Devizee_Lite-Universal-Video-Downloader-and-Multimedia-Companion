@@ -100,16 +100,24 @@ fn run_command_with_timeout(
                 "[Devizee] {} timed out after {}s — killing PID {}",
                 label_owned, timeout_secs, pid
             );
-            #[cfg(target_os = "windows")]
-            {
-                let mut kill = Command::new("taskkill");
-                kill.args(["/F", "/T", "/PID", &pid.to_string()]);
-                kill.creation_flags(0x08000000);
-                let _ = kill.status();
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+            // Bug 5: verify image name before kill to prevent PID-recycle hits.
+            if is_safe_to_kill(pid) {
+                #[cfg(target_os = "windows")]
+                {
+                    let mut kill = Command::new("taskkill");
+                    kill.args(["/F", "/T", "/PID", &pid.to_string()]);
+                    kill.creation_flags(0x08000000);
+                    let _ = kill.status();
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+                }
+            } else {
+                eprintln!(
+                    "[Devizee] PID {} no longer matches our sidecar — skipping kill",
+                    pid
+                );
             }
         }
     });
@@ -1151,7 +1159,9 @@ async fn start_download(
             // Flags that take exactly one value token after them
             const ALLOWED_VALUE: &[&str] = &[
                 "--limit-rate",
-                "--proxy",
+                // --proxy removed: proxy credentials passed via HTTP_PROXY /
+                // HTTPS_PROXY env vars (see F-22) to prevent leaking through
+                // Task Manager. Users configure proxy in Settings → Connection.
                 "--retries",
                 "--fragment-retries",
                 "--concurrent-fragments",
@@ -1350,18 +1360,26 @@ async fn start_download(
                         watchdog_pid, since_last, watchdog_task_id
                     );
 
-                    #[cfg(target_os = "windows")]
-                    {
-                        let mut kill_cmd = Command::new("taskkill");
-                        kill_cmd.args(["/F", "/T", "/PID", &watchdog_pid.to_string()]);
-                        kill_cmd.creation_flags(0x08000000);
-                        let _ = kill_cmd.status();
-                    }
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        let _ = Command::new("kill")
-                            .args(["-9", &watchdog_pid.to_string()])
-                            .status();
+                    // Bug 5: verify image name before kill to prevent PID-recycle hits.
+                    if is_safe_to_kill(watchdog_pid) {
+                        #[cfg(target_os = "windows")]
+                        {
+                            let mut kill_cmd = Command::new("taskkill");
+                            kill_cmd.args(["/F", "/T", "/PID", &watchdog_pid.to_string()]);
+                            kill_cmd.creation_flags(0x08000000);
+                            let _ = kill_cmd.status();
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            let _ = Command::new("kill")
+                                .args(["-9", &watchdog_pid.to_string()])
+                                .status();
+                        }
+                    } else {
+                        eprintln!(
+                            "[Devizee Watchdog] PID {} no longer matches — skipping kill",
+                            watchdog_pid
+                        );
                     }
 
                     let _ = watchdog_app.emit(
@@ -1636,39 +1654,51 @@ async fn start_download(
             #[cfg(target_os = "windows")]
             if scan_antivirus.unwrap_or(false) {
                 if let Some(ref fp) = final_file_path {
-                    // F-18: modern Windows Defender installs MpCmdRun.exe under
-                    // ProgramData\Microsoft\Windows Defender\Platform\<version>\.
-                    // The old hardcoded Program Files path is often absent.
-                    // Try both, plus the fallback via `where` for PATH-based installs.
+                    // F-18: modern Defender lives under ProgramData\...\Platform\<ver>\
                     let candidates: Vec<std::path::PathBuf> = {
-                        let mut v: Vec<std::path::PathBuf> = Vec::new();
-                        // Legacy path
+                        let mut v = Vec::new();
                         v.push(std::path::PathBuf::from(
                             r"C:\Program Files\Windows Defender\MpCmdRun.exe",
                         ));
-                        // Modern Platform folder — scan for the highest version
                         if let Ok(entries) =
                             std::fs::read_dir(r"C:\ProgramData\Microsoft\Windows Defender\Platform")
                         {
-                            for entry in entries.flatten() {
-                                let candidate = entry.path().join("MpCmdRun.exe");
-                                if candidate.exists() {
-                                    v.push(candidate);
+                            for e in entries.flatten() {
+                                let c = e.path().join("MpCmdRun.exe");
+                                if c.exists() {
+                                    v.push(c);
                                 }
                             }
                         }
                         v
                     };
-
                     if let Some(mpcmdrun) = candidates.iter().find(|p| p.exists()) {
                         let mut av_cmd = Command::new(mpcmdrun);
                         av_cmd.args(["-Scan", "-ScanType", "3", "-File", fp]);
                         av_cmd.creation_flags(0x08000000);
                         let _ = av_cmd.status();
-                    } else {
-                        eprintln!(
-                            "[Devizee] Antivirus scan enabled but MpCmdRun.exe not found. Skipping."
-                        );
+                    }
+                }
+            }
+
+            // Bug 2 fix: re-check DB status. AV scanning blocks for 2–8
+            // seconds. If the user clicked Cancel during that window,
+            // cancel_download has already set the record to Cancelled.
+            // We must NOT overwrite that with Completed.
+            if let Some(state) = app_clone.try_state::<AppState>() {
+                if let Ok(conn) = state.db_conn.lock() {
+                    if let Ok(recs) = db::get_all_downloads(&conn) {
+                        if let Some(rec) = recs.into_iter().find(|r| r.id == task_id_clone) {
+                            if rec.status == DownloadStatus::Cancelled
+                                || rec.status == DownloadStatus::Interrupted
+                            {
+                                eprintln!(
+                                    "[Devizee] Task {} was cancelled during AV scan — not overriding to Completed",
+                                    task_id_clone
+                                );
+                                return;
+                            }
+                        }
                     }
                 }
             }
@@ -1941,7 +1971,8 @@ async fn get_audio_stream_url(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    let output = cmd.output().map_err(|e| e.to_string())?;
+    // Bug 8: 30s timeout — hung DNS / dead socket would freeze the UI.
+    let output = run_command_with_timeout(cmd, 30, "yt-dlp audio stream url")?;
     if output.status.success() {
         let stream_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if !stream_url.is_empty() {
@@ -1974,7 +2005,8 @@ async fn get_video_stream_url(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    let output = cmd.output().map_err(|e| e.to_string())?;
+    // Bug 8: 30s timeout.
+    let output = run_command_with_timeout(cmd, 30, "yt-dlp video stream url")?;
     if output.status.success() {
         let stream_url = String::from_utf8_lossy(&output.stdout)
             .lines()
@@ -2411,7 +2443,8 @@ async fn fetch_audio_bytes(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    let output = cmd.output().map_err(|e| e.to_string())?;
+    // Bug 8: 60s timeout — audio byte fetch can take longer than metadata.
+    let output = run_command_with_timeout(cmd, 60, "yt-dlp audio bytes")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let clean: Vec<&str> = stderr
@@ -2461,12 +2494,24 @@ async fn read_local_file(path: String, app: tauri::AppHandle) -> Result<Vec<u8>,
     let allowed_canonical = allowed_root.canonicalize().unwrap_or(allowed_root);
 
     // F-16: normalize case on Windows for UNC path prefix comparison.
-    // Drive letters and UNC prefixes are case-insensitive but Path::starts_with
-    // is byte-comparison. Convert both to lowercase strings before comparing.
     let canon_str = canonical.to_string_lossy().to_lowercase();
     let allowed_str = allowed_canonical.to_string_lossy().to_lowercase();
 
-    if !canon_str.starts_with(&allowed_str) {
+    // Bug 1 fix: allow any file recorded in the DB, even if the user
+    // configured a custom download folder (e.g. D:\Media). Without this,
+    // users on custom paths cannot preview their own downloads.
+    let mut is_known_download = false;
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(conn) = state.db_conn.lock() {
+            if let Ok(records) = db::get_all_downloads(&conn) {
+                is_known_download = records
+                    .iter()
+                    .any(|r| r.file_path.as_deref() == Some(path.as_str()));
+            }
+        }
+    }
+
+    if !is_known_download && !canon_str.starts_with(&allowed_str) {
         return Err("Access denied: file is outside the Devizee download directory".to_string());
     }
 
@@ -2539,7 +2584,19 @@ fn delete_history_file(
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
         let allowed_canonical = allowed_root.canonicalize().unwrap_or(allowed_root);
 
-        if !canonical.starts_with(&allowed_canonical) {
+        // Bug 1 fix: allow any file recorded in the DB, even if the user
+        // configured a custom download folder (e.g. D:\Media). Without this,
+        // users on custom paths cannot delete their own downloads.
+        let mut is_known_download = false;
+        if let Ok(conn) = state.db_conn.lock() {
+            if let Ok(records) = db::get_all_downloads(&conn) {
+                is_known_download = records
+                    .iter()
+                    .any(|r| r.file_path.as_deref() == Some(file_path.as_str()));
+            }
+        }
+
+        if !is_known_download && !canonical.starts_with(&allowed_canonical) {
             return Err(
                 "Access denied: file is outside the Devizee download directory".to_string(),
             );
@@ -2701,18 +2758,53 @@ pub fn run() {
                                 let had_victims = !victims.is_empty();
 
                                 for (task_id, pid) in victims {
-                                    #[cfg(target_os = "windows")]
-                                    {
-                                        let mut kill_cmd = Command::new("taskkill");
-                                        kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
-                                        kill_cmd.creation_flags(0x08000000);
-                                        let _ = kill_cmd.status();
+                                    // Bug 3 fix: Muxing tasks use local ffmpeg,
+                                    // not network. They can safely complete after
+                                    // wake. Killing them leaves a truncated .mp4
+                                    // that yt-dlp refuses to re-mux on resume
+                                    // (it sees the file already exists).
+                                    let is_muxing = {
+                                        match state.db_conn.lock() {
+                                            Ok(conn) => db::get_all_downloads(&conn)
+                                                .ok()
+                                                .and_then(|recs| {
+                                                    recs.into_iter()
+                                                        .find(|r| r.id == task_id)
+                                                })
+                                                .map(|r| r.status == DownloadStatus::Muxing)
+                                                .unwrap_or(false),
+                                            Err(_) => false,
+                                        }
+                                    };
+
+                                    if is_muxing {
+                                        eprintln!(
+                                            "[Devizee Sleep] Skipping Muxing task {} — ffmpeg can finish after wake",
+                                            task_id
+                                        );
+                                        continue;
                                     }
-                                    #[cfg(not(target_os = "windows"))]
-                                    {
-                                        let _ = Command::new("kill")
-                                            .args(["-9", &pid.to_string()])
-                                            .status();
+
+                                    // Bug 5: verify image name before kill to prevent PID-recycle hits.
+                                    if is_safe_to_kill(pid) {
+                                        #[cfg(target_os = "windows")]
+                                        {
+                                            let mut kill_cmd = Command::new("taskkill");
+                                            kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+                                            kill_cmd.creation_flags(0x08000000);
+                                            let _ = kill_cmd.status();
+                                        }
+                                        #[cfg(not(target_os = "windows"))]
+                                        {
+                                            let _ = Command::new("kill")
+                                                .args(["-9", &pid.to_string()])
+                                                .status();
+                                        }
+                                    } else {
+                                        eprintln!(
+                                            "[Devizee Sleep] PID {} no longer matches — skipping kill",
+                                            pid
+                                        );
                                     }
 
                                     if let Ok(mut procs) = state.active_processes.lock() {

@@ -31,12 +31,25 @@ const elementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode
 const elementFilterChains = new WeakMap<HTMLMediaElement, BiquadFilterNode[]>();
 const allActiveFilterChains = new Set<BiquadFilterNode[]>();
 
-/** Ensure a single shared AudioContext exists and is running. */
 export function ensureAudioContext(): AudioContext | null {
     if (!globalAudioState.ctx) {
         try {
             const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-            globalAudioState.ctx = new Ctx();
+            const ctx = new Ctx();
+
+            // Bug 7 fix: auto-resume when the OS suspends the audio device
+            // (sleep, Bluetooth disconnect, driver reset, USB DAC unplug).
+            // Without this, the AudioContext permanently sits in "suspended"
+            // state after the device returns — silent playback until restart.
+            ctx.onstatechange = () => {
+                if (ctx.state === "suspended") {
+                    ctx.resume().catch((err) =>
+                        console.warn("[Devizee EQ] onstatechange resume failed:", err)
+                    );
+                }
+            };
+
+            globalAudioState.ctx = ctx;
         } catch (e) {
             console.error("[Devizee EQ] Cannot create AudioContext:", e);
             return null;
