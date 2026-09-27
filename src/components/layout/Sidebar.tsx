@@ -200,9 +200,8 @@ export function Sidebar({
             {activeTab !== "downloads" && activeDownload && (
                 <div
                     onClick={() => setActiveTab("downloads")}
-                    className={`cursor-pointer transition-all rounded-xl border border-accent/40 bg-accent-subtle/30 hover:bg-accent-subtle/50 ${
-                        collapsed ? "mx-2 mb-2 p-2 flex flex-col items-center" : "mx-3 mb-3 p-3 space-y-2"
-                    }`}
+                    className={`cursor-pointer transition-all rounded-xl border border-accent/40 bg-accent-subtle/30 hover:bg-accent-subtle/50 ${collapsed ? "mx-2 mb-2 p-2 flex flex-col items-center" : "mx-3 mb-3 p-3 space-y-2"
+                        }`}
                     title="Active download in progress — click to view in Downloads"
                 >
                     <div className="flex items-center justify-between text-caption">
@@ -253,7 +252,7 @@ export function Sidebar({
                     <AudioOutputDropdown
                         audioDevices={audioDevices}
                         selectedDevice={selectedAudioDevice}
-                        onSelectDevice={onSelectAudioDevice || (() => {})}
+                        onSelectDevice={onSelectAudioDevice || (() => { })}
                         placement={collapsed ? "right" : "up"}
                         compact={collapsed}
                     />
@@ -267,7 +266,7 @@ export function Sidebar({
                     )}
                     <EqualizerDropdown
                         selectedPreset={selectedEqPreset}
-                        onSelectPreset={onSelectEqPreset || (() => {})}
+                        onSelectPreset={onSelectEqPreset || (() => { })}
                         placement={collapsed ? "right" : "up"}
                         compact={collapsed}
                     />

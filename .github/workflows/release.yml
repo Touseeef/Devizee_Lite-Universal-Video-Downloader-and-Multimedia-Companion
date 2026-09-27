@@ -39,6 +39,36 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ─── Sidecar binaries ───
+      # tauri.conf.json declares yt-dlp and ffmpeg as externalBin
+      # dependencies. The binaries are ~50 MB each and are gitignored,
+      # so CI must download them before `tauri build` runs.
+      - name: Prepare sidecar binaries directory
+        run: mkdir -p src-tauri/bin
+        shell: bash
+
+      - name: Download yt-dlp
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" `
+            -OutFile "src-tauri/bin/yt-dlp-x86_64-pc-windows-msvc.exe"
+          Get-Item "src-tauri/bin/yt-dlp-x86_64-pc-windows-msvc.exe" | Select-Object Name, Length
+
+      - name: Download ffmpeg
+        shell: pwsh
+        run: |
+          $zip = "ffmpeg-release-essentials.zip"
+          Invoke-WebRequest `
+            -Uri "https://www.gyan.dev/ffmpeg/builds/$zip" `
+            -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath ffmpeg-temp -Force
+          $exe = Get-ChildItem -Path ffmpeg-temp -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          if (-not $exe) { throw "ffmpeg.exe not found in archive" }
+          Copy-Item $exe.FullName "src-tauri/bin/ffmpeg-x86_64-pc-windows-msvc.exe"
+          Get-Item "src-tauri/bin/ffmpeg-x86_64-pc-windows-msvc.exe" | Select-Object Name, Length
+          Remove-Item -Recurse -Force $zip, ffmpeg-temp
+
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
