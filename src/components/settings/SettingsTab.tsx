@@ -1,12 +1,12 @@
 import { useState } from "react";
 import {
+    Check,
     Clock,
-    Coffee,
+    Copy,
     Cpu,
     Download,
     ExternalLink,
     FastForward,
-    Heart,
     RefreshCw,
     Shield,
     Sliders,
@@ -90,6 +90,7 @@ export function SettingsTab({
     const [activeSection, setActiveSection] = useState<SettingsTabId>("general");
     const [eqBands, setEqBands] = useState<number[]>([...currentEqGains]);
     const [activePreset, setActivePreset] = useState<string>("Flat");
+    const [diagCopied, setDiagCopied] = useState(false);
 
     const tabs: { id: SettingsTabId; label: string; icon: any }[] = [
         { id: "general", label: "General", icon: Sliders },
@@ -777,16 +778,16 @@ export function SettingsTab({
                                     <div className="flex items-center gap-2">
                                         <h3 className="font-extrabold text-title-sm text-primary tracking-tight">Devizee Lite - Universal Video Downloader</h3>
                                         <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent text-[11px] font-bold">
-                                            v0.2.1-lite
+                                            v0.4.0
                                         </span>
                                     </div>
                                     <p className="text-caption text-secondary">Universal High-Performance Media Downloader • Tauri v2 & Rust Native</p>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <a
-                                    href="https://github.com/Touseeef/devizee-all-in-one-download-manager"
+                                    href="https://github.com/Touseeef/devizee-lite-universal-video-downloader"
                                     target="_blank"
                                     rel="noreferrer"
                                     className="px-3 py-2 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-semibold text-primary transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-[1.02]"
@@ -795,12 +796,21 @@ export function SettingsTab({
                                     <ExternalLink size={13} />
                                 </a>
                                 <a
-                                    href="https://reddit.com/r/Devizee"
+                                    href="https://github.com/Touseeef/devizee-lite-universal-video-downloader/issues/new?template=bug.md"
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="px-3 py-2 rounded-xl bg-[#ff4500]/10 hover:bg-[#ff4500]/20 border border-[#ff4500]/30 text-caption font-semibold text-[#ff4500] transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-[1.02]"
+                                    className="px-3 py-2 rounded-xl bg-status-danger/10 hover:bg-status-danger/20 border border-status-danger/30 text-caption font-semibold text-status-danger transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-[1.02]"
                                 >
-                                    <span>r/Devizee</span>
+                                    <span>Report a Bug</span>
+                                    <ExternalLink size={13} />
+                                </a>
+                                <a
+                                    href="https://github.com/Touseeef/devizee-lite-universal-video-downloader/issues/new?template=feature.md"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3 py-2 rounded-xl bg-accent/10 hover:bg-accent/20 border border-accent/30 text-caption font-semibold text-accent transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-[1.02]"
+                                >
+                                    <span>Request a Feature</span>
                                     <ExternalLink size={13} />
                                 </a>
                             </div>
@@ -833,70 +843,65 @@ export function SettingsTab({
                         </div>
                     </div>
 
-                    {/* Developer Support & Pakistan Monetization Guidance Card */}
+                    {/* F3: System Info + Copy Diagnostics */}
                     <div className="p-6 bg-surface-1 rounded-2xl border border-border-subtle shadow-sm space-y-4">
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-status-success-subtle text-status-success flex items-center justify-center">
-                                <Heart size={16} />
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-accent-subtle text-accent flex items-center justify-center">
+                                    <Cpu size={16} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-body text-primary">System Information</h3>
+                                    <p className="text-caption text-secondary">Useful for bug reports and support</p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 className="font-bold text-body text-primary">Support Devizee Development (from Pakistan 🇵🇰)</h3>
-                                <p className="text-caption text-secondary">How international open-source funding works for Pakistani creators</p>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const match = navigator.userAgent.match(/Edg\/([\d.]+)/);
+                                    const webview = match ? match[1] : "unknown";
+                                    const info = [
+                                        "Devizee Lite v0.4.0",
+                                        `Platform: ${navigator.platform}`,
+                                        `User agent: ${navigator.userAgent}`,
+                                        `WebView2: ${webview}`,
+                                        `Language: ${navigator.language}`,
+                                        `Screen: ${window.screen.width}x${window.screen.height}`,
+                                        `Device pixel ratio: ${window.devicePixelRatio}`,
+                                        `Timestamp: ${new Date().toISOString()}`,
+                                    ].join("\n");
+                                    try {
+                                        await navigator.clipboard.writeText(info);
+                                        setDiagCopied(true);
+                                        setTimeout(() => setDiagCopied(false), 2000);
+                                    } catch (e) {
+                                        console.error("Clipboard failed:", e);
+                                    }
+                                }}
+                                className={`px-3 py-2 rounded-xl text-caption font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${diagCopied
+                                    ? "bg-status-success text-white"
+                                    : "bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary"
+                                    }`}
+                                title="Copy diagnostic info to clipboard"
+                            >
+                                {diagCopied ? (
+                                    <>
+                                        <Check size={13} />
+                                        <span>Copied!</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Copy size={13} />
+                                        <span>Copy Diagnostics</span>
+                                    </>
+                                )}
+                            </button>
                         </div>
-
-                        <p className="text-caption text-secondary leading-relaxed">
-                            Direct Stripe and PayPal merchant accounts are not natively available in Pakistan.
-                            However, independent developers seamlessly receive international creator tips and sponsorships by linking a
-                            <span className="font-semibold text-primary"> Payoneer</span> or <span className="font-semibold text-primary">Wise</span> virtual bank account to local Pakistani banks and digital wallets (JazzCash, SadaPay, NayaPay, or Meezan Bank).
-                        </p>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                            <a
-                                href="https://buymeacoffee.com"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-4 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle transition-all flex flex-col justify-between group cursor-pointer"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="font-bold text-caption text-primary flex items-center gap-1.5">
-                                        <Coffee size={15} className="text-[#FFDD00]" /> Buy Me a Coffee
-                                    </span>
-                                    <ExternalLink size={12} className="text-tertiary group-hover:text-primary transition-colors" />
-                                </div>
-                                <p className="text-[11px] text-tertiary">Supports Payoneer direct payout routing into Pakistan.</p>
-                            </a>
-
-                            <a
-                                href="https://ko-fi.com"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-4 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle transition-all flex flex-col justify-between group cursor-pointer"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="font-bold text-caption text-primary flex items-center gap-1.5">
-                                        <Heart size={15} className="text-[#FF5E5B]" /> Ko-fi Support
-                                    </span>
-                                    <ExternalLink size={12} className="text-tertiary group-hover:text-primary transition-colors" />
-                                </div>
-                                <p className="text-[11px] text-tertiary">0% platform fee for creator one-time tips via Stripe/Payoneer.</p>
-                            </a>
-
-                            <a
-                                href="https://github.com/sponsors"
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-4 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle transition-all flex flex-col justify-between group cursor-pointer"
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="font-bold text-caption text-primary flex items-center gap-1.5">
-                                        <Shield size={15} className="text-accent" /> GitHub Sponsors
-                                    </span>
-                                    <ExternalLink size={12} className="text-tertiary group-hover:text-primary transition-colors" />
-                                </div>
-                                <p className="text-[11px] text-tertiary">Direct monthly sponsorship directly on open-source repositories.</p>
-                            </a>
-                        </div>
+                        <pre className="p-3 rounded-xl bg-surface-2/60 border border-border-subtle text-[11px] font-mono text-secondary leading-relaxed whitespace-pre-wrap overflow-x-auto">
+                            {`Devizee Lite v0.4.0 · Tauri v2 · Rust + React
+Repository: github.com/Touseeef/devizee-lite-universal-video-downloader
+Privacy: Zero telemetry. All processing local.`}
+                        </pre>
                     </div>
 
                     {/* Devizee Lite vs All-In-One (AIO) Roadmap Matrix */}

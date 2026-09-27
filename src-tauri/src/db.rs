@@ -113,6 +113,29 @@ pub fn init_db(app: &AppHandle) -> Result<Connection> {
     conn.pragma_update(None, "foreign_keys", "ON")?;
     conn.busy_timeout(std::time::Duration::from_millis(5000))?;
 
+    // F-25: schema versioning. Version history:
+    //   0 (or unset) = legacy — pre-columns for format_id, error_code, error_message
+    //   1            = v0.3.0 — post-WAL/migration checkpoint
+    //   2            = v0.4.0 — current
+    //
+    // The migration path applies idempotent ALTER TABLE statements and then
+    // bumps user_version. Future migrations append to this switch.
+    let current_version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    if current_version < 2 {
+        // v0 → v2 migration (idempotent — ALTER TABLE no-ops if column exists)
+        let _ = conn.execute("ALTER TABLE downloads ADD COLUMN error_code TEXT", []);
+        let _ = conn.execute("ALTER TABLE downloads ADD COLUMN error_message TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE downloads ADD COLUMN format_id TEXT DEFAULT ''",
+            [],
+        );
+        // Bump version — only after the migration path runs successfully
+        let _ = conn.pragma_update(None, "user_version", 2);
+    }
+
     // Complete base table schema
     conn.execute(
         "CREATE TABLE IF NOT EXISTS downloads (
@@ -131,14 +154,6 @@ pub fn init_db(app: &AppHandle) -> Result<Connection> {
         )",
         [],
     )?;
-
-    // Safe migration fallbacks for existing legacy databases
-    let _ = conn.execute("ALTER TABLE downloads ADD COLUMN error_code TEXT", []);
-    let _ = conn.execute("ALTER TABLE downloads ADD COLUMN error_message TEXT", []);
-    let _ = conn.execute(
-        "ALTER TABLE downloads ADD COLUMN format_id TEXT DEFAULT ''",
-        [],
-    );
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS settings (

@@ -52,6 +52,11 @@ import { BatchQueuePanel, type BatchItem } from "./components/downloads/BatchQue
 export default function App() {
   const isHud = window.location.search.includes("hud=true");
 
+  // SC-2: The HUD window loads the full App bundle. To prevent it from
+  // registering duplicate IPC listeners and calling loadHistory() on every
+  // progress tick (which contends with the main window for the same SQLite
+  // connection), we short-circuit the two heaviest effects below.
+
   // Navigation & Tabs
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [playSource, setPlaySource] = useState<PlaySource>("none");
@@ -98,7 +103,7 @@ export default function App() {
   // YouTube/CDNs intermittently throw 403 / rate-limits that yt-dlp reports
   // as "unavailable" or "network". Retry silently before showing an error.
   const AUTO_RETRY_MAX = 2;
-  const AUTO_RETRY_DELAY_MS = 2000;
+  const AUTO_RETRY_DELAY_MS = 2000;      // base delay; actual = base * 2^attempt
   const TRANSIENT_ERROR_CODES = new Set(["network", "unavailable"]);
   const retryAttemptsRef = useRef<Map<string, number>>(new Map());
   const historyRef = useRef<DownloadRecord[]>([]);
@@ -255,6 +260,9 @@ export default function App() {
   // W2-9: expose folder/file openers globally so PlaylistPanel chips can
   // trigger the same behavior without prop drilling.
   useEffect(() => {
+    // SC-2: only the main window exposes these globals.
+    if (isHud) return;
+
     (window as any).__onReveal = openFolder;
     (window as any).__onOpenFile = openFile;
   }, []);
@@ -461,6 +469,9 @@ export default function App() {
 
   // W3-9: online/offline detection + notifications
   useEffect(() => {
+    // SC-2: HUD does not need connectivity events.
+    if (isHud) return;
+
     let wentOffline = false;
 
     const goOnline = () => {
@@ -874,7 +885,13 @@ export default function App() {
     if (isHud) return;
     if (!settings.clipboardRadar) return;
 
-    const interval = setInterval(async () => {
+    // F-31: pause polling when the window is hidden/minimized.
+    // Uses the visibility API instead of a native clipboard-change hook —
+    // Tauri v2's clipboard-manager doesn't expose change events on all
+    // platforms, so we keep polling but stop it when nobody's watching.
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async () => {
       try {
         const text = await readText();
         if (
@@ -904,9 +921,32 @@ export default function App() {
           }, 8000);
         }
       } catch { }
-    }, 1500);
+    };
 
-    return () => clearInterval(interval);
+    const startPolling = () => {
+      if (interval) return;
+      interval = setInterval(tick, 1500);
+    };
+
+    const stopPolling = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) stopPolling();
+      else startPolling();
+    };
+
+    if (!document.hidden) startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [isHud, settings.clipboardRadar]);
 
   const flushNotifications = async () => {
@@ -955,25 +995,40 @@ export default function App() {
     }
   };
 
-  // Single-Instance Native Messaging Relay Listener
+  // Single-Instance Native Messaging Relay Listener (F-01: race-safe cleanup)
   useEffect(() => {
-    const unlisten = listen<string>("open-url", (event) => {
+    // SC-2: HUD does not handle URLs — the main window does.
+    if (isHud) return;
+
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
+
+    listen<string>("open-url", (event) => {
       if (event.payload) {
         setUrl(event.payload);
         setActiveTab("downloads");
         analyzeUrl(event.payload);
       }
+    }).then((f) => {
+      if (disposed) f();
+      else unlistenFn = f;
     });
+
     return () => {
-      unlisten.then((f) => f());
+      disposed = true;
+      if (unlistenFn) unlistenFn();
     };
   }, []);
 
-  // SC-1: Sleep/wake listener — backend kills active downloads after wake
-  // and emits this event. Show a notification and refresh the history so
-  // the Interrupted status appears immediately.
+  // SC-1: Sleep/wake listener (F-01: race-safe cleanup)
   useEffect(() => {
-    const unlisten = listen("system-woke-from-sleep", () => {
+    // SC-2: HUD does not need to know about system wake events.
+    if (isHud) return;
+
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
+
+    listen("system-woke-from-sleep", () => {
       if (settings.showNotifications) {
         sendNotification({
           title: "Devizee - Downloads Paused After Sleep",
@@ -981,9 +1036,92 @@ export default function App() {
         });
       }
       loadHistory();
+    }).then((f) => {
+      if (disposed) f();
+      else unlistenFn = f;
     });
+
     return () => {
-      unlisten.then((f) => f());
+      disposed = true;
+      if (unlistenFn) unlistenFn();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.showNotifications]);
+
+  // SC-3: sidecar fingerprint verification. On first run, we save the
+  // current hashes as the baseline. On subsequent runs, if the hashes
+  // differ we notify the user — they may have legitimately updated
+  // yt-dlp, or the binary may have been tampered with.
+  useEffect(() => {
+    if (isHud) return;
+
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
+
+    listen<{ yt_dlp: string | null; ffmpeg: string | null }>(
+      "sidecar-fingerprint",
+      (event) => {
+        const { yt_dlp, ffmpeg } = event.payload;
+        const STORAGE_KEY = "devizee_sidecar_hashes_v1";
+
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (!stored) {
+            // First run: establish the baseline silently
+            localStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify({ yt_dlp, ffmpeg })
+            );
+            console.log("[SC-3] Sidecar baseline established");
+            return;
+          }
+
+          const baseline = JSON.parse(stored) as {
+            yt_dlp: string | null;
+            ffmpeg: string | null;
+          };
+
+          const ytChanged =
+            baseline.yt_dlp && yt_dlp && baseline.yt_dlp !== yt_dlp;
+          const ffChanged =
+            baseline.ffmpeg && ffmpeg && baseline.ffmpeg !== ffmpeg;
+
+          if (ytChanged || ffChanged) {
+            const changed: string[] = [];
+            if (ytChanged) changed.push("yt-dlp");
+            if (ffChanged) changed.push("ffmpeg");
+
+            console.warn(
+              "[SC-3] Sidecar binary fingerprint changed:",
+              changed.join(", ")
+            );
+
+            if (settings.showNotifications) {
+              sendNotification({
+                title: "Devizee - Download Engine Changed",
+                body: `The ${changed.length === 2 ? "yt-dlp and ffmpeg binaries" : changed[0] + " binary"
+                  } changed since last launch. If you didn't update them yourself, this may indicate tampering.`,
+              });
+            }
+
+            // Update baseline to the new value (accept the change)
+            localStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify({ yt_dlp, ffmpeg })
+            );
+          }
+        } catch (e) {
+          console.warn("[SC-3] Fingerprint check failed:", e);
+        }
+      }
+    ).then((f) => {
+      if (disposed) f();
+      else unlistenFn = f;
+    });
+
+    return () => {
+      disposed = true;
+      if (unlistenFn) unlistenFn();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.showNotifications]);
@@ -1008,23 +1146,31 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeVideoPlaying, nowPlaying]);
 
-  // Window blur listener: when user clicks inside YouTube iframe, window blurs to iframe
+  // F-02: On iframe focus, stop audio but DO NOT assert video is playing.
+  // The YouTube postMessage listener will fire `infoDelivery` with
+  // playerState=1 once the video actually begins — that's what drives
+  // transitionPlayback. Assuming playback on focus-blur caused spurious
+  // "playing" states when the user just clicked into the iframe chrome.
   useEffect(() => {
     const handleWindowBlur = () => {
       if (document.activeElement === iframeRef.current) {
         stopAudioPlayback();
-        if (videoInfo) {
-          transitionPlayback({ type: "video", id: videoInfo.id, state: "playing" });
-        }
       }
     };
     window.addEventListener("blur", handleWindowBlur);
     return () => window.removeEventListener("blur", handleWindowBlur);
-  }, [stopAudioPlayback, videoInfo, transitionPlayback]);
+  }, [stopAudioPlayback]);
 
 
   useEffect(() => {
+    // SC-2: HUD window must not poll history or subscribe to progress events.
+    // The main window owns that responsibility exclusively.
+    if (isHud) return;
+
     loadHistory();
+
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
 
     // W3-5: fire-and-forget orphan cleanup on startup. Backend removes
     // any *.part / *.ytdl files older than 48 hours under the current
@@ -1042,7 +1188,7 @@ export default function App() {
       }
     })();
 
-    const unlisten = listen<any>("download-progress", (event) => {
+    listen<any>("download-progress", (event) => {
       const p = event.payload;
 
       // ─── F-A1: Silent auto-retry for transient errors ───
@@ -1056,8 +1202,10 @@ export default function App() {
         const attempts = retryAttemptsRef.current.get(p.task_id) || 0;
         if (attempts < AUTO_RETRY_MAX) {
           retryAttemptsRef.current.set(p.task_id, attempts + 1);
+          // F-13b: exponential backoff — 2s, 4s (2 * 2^attempt)
+          const backoffMs = AUTO_RETRY_DELAY_MS * Math.pow(2, attempts);
           console.log(
-            `[Auto-Retry] Scheduling attempt ${attempts + 1}/${AUTO_RETRY_MAX} for ${p.task_id}`
+            `[Auto-Retry] Scheduling attempt ${attempts + 1}/${AUTO_RETRY_MAX} for ${p.task_id} in ${backoffMs}ms`
           );
           setTimeout(() => {
             const rec = historyRef.current.find((h) => h.id === p.task_id);
@@ -1065,7 +1213,7 @@ export default function App() {
               console.log(`[Auto-Retry] Firing retry for ${p.task_id}`);
               handleRetryDownloadRef.current(rec);
             }
-          }, AUTO_RETRY_DELAY_MS);
+          }, backoffMs);
           // Do NOT update state, do NOT push to errorBatch, do NOT notify.
           // The record stays as "downloading" until the retry flips it back
           // through Queued → Starting → Downloading.
@@ -1144,10 +1292,14 @@ export default function App() {
         };
         return newHistory;
       });
+    }).then((f) => {
+      if (disposed) f();
+      else unlistenFn = f;
     });
 
     return () => {
-      unlisten.then((f) => f());
+      disposed = true;
+      if (unlistenFn) unlistenFn();
     };
   }, []);
 
@@ -1155,7 +1307,10 @@ export default function App() {
   // In-App Video Playback Trigger (Plays video on thumbnail click)
   const handlePlayVideo = async (targetVideo: { id: string; url: string; title: string; thumbnail: string; duration_string: string }) => {
     unlockAudioContext();
-    setPlaySource("livePlaylist");
+    // D7: only flip to livePlaylist if we're not already in downloadedLibrary
+    // mode with an active queue. Otherwise the state machine gets confused
+    // about which queue completion events should refresh.
+    setPlaySource((prev) => (prev === "downloadedLibrary" ? prev : "livePlaylist"));
     if (audioRef.current) {
       audioRef.current.pause();
     }

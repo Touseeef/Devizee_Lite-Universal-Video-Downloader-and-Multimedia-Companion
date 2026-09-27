@@ -1,6 +1,6 @@
 [package]
 name = "devizee-all-in-one-download-manager"
-version = "0.3.0"
+version = "0.4.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -36,6 +36,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 serde_json = "1"
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 

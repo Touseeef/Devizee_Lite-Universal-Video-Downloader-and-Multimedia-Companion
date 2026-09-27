@@ -68,6 +68,80 @@ fn cookies_args(cookies_from_browser: Option<String>) -> Vec<String> {
     }
 }
 
+/// F-20: Run a Command with a hard timeout. Kills the process tree if it
+/// doesn't complete in time. Prevents UI freezes when yt-dlp hangs on a
+/// slow/dead server during metadata fetch, playlist enumeration, or search.
+fn run_command_with_timeout(
+    mut cmd: Command,
+    timeout_secs: u64,
+    label: &str,
+) -> Result<std::process::Output, String> {
+    cmd.stdin(Stdio::null());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    // Spawn the child. wait_with_output() consumes self, so no `mut` needed.
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to launch {}: {}", label, e))?;
+    let pid = child.id();
+
+    // Own the label so it can move into the watchdog thread.
+    // The original &str stays valid for the two map_err calls below.
+    let label_owned: String = label.to_string();
+
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let done_clone = done.clone();
+
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(timeout_secs));
+        if !done_clone.load(std::sync::atomic::Ordering::SeqCst) {
+            eprintln!(
+                "[Devizee] {} timed out after {}s — killing PID {}",
+                label_owned, timeout_secs, pid
+            );
+            #[cfg(target_os = "windows")]
+            {
+                let mut kill = Command::new("taskkill");
+                kill.args(["/F", "/T", "/PID", &pid.to_string()]);
+                kill.creation_flags(0x08000000);
+                let _ = kill.status();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+            }
+        }
+    });
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("{} process error: {}", label, e))?;
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    Ok(output)
+}
+
+/// SC-3: SHA-256 fingerprint of a file. Used for TOFU (trust-on-first-use)
+/// tamper detection on sidecar binaries. Returns None if the file can't be
+/// read — caller treats that as "verification skipped."
+fn compute_file_sha256(path: &std::path::Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&buf[..n]),
+            Err(_) => return None,
+        }
+    }
+    Some(format!("{:x}", hasher.finalize()))
+}
+
 /// Helper function to locate the active yt-dlp executable (Absolute Paths)
 fn get_yt_dlp_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     // 1. Check self-updated binary in %LOCALAPPDATA% (FR-4.1)
@@ -131,7 +205,14 @@ fn get_yt_dlp_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         }
     }
 
-    Ok(PathBuf::from("yt-dlp"))
+    // SC-3: refuse to fall back to system PATH. This was the primary attack
+    // vector — any writable folder early in PATH (e.g. a hijacked user
+    // temp dir) could host a malicious yt-dlp.exe that Devizee would execute
+    // with the user's privileges. If none of the trusted candidates exist,
+    // fail loudly instead of silently trusting PATH.
+    Err("Could not locate yt-dlp.exe in any trusted location. \
+         Please reinstall Devizee."
+        .to_string())
 }
 
 /// Helper function to locate the ffmpeg binary (Absolute Paths)
@@ -214,9 +295,8 @@ async fn fetch_video_info(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to launch download engine: {}", e))?;
+    // F-20: 30s timeout so a hung YouTube response can't freeze the UI
+    let output = run_command_with_timeout(cmd, 30, "yt-dlp metadata fetch")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1032,10 +1112,17 @@ async fn start_download(
             }
         }
 
+        // F-22: proxy credentials in --proxy user:pass@host:port are visible
+        // to any local process via Task Manager / wmic / Process Explorer.
+        // Pass via HTTP_PROXY / HTTPS_PROXY env vars instead. yt-dlp reads
+        // these natively and they don't appear in the process command line.
         if let Some(ref prx) = proxy {
             let prx_str = prx.trim();
             if !prx_str.is_empty() {
-                cmd.args(["--proxy", prx_str]);
+                cmd.env("HTTP_PROXY", prx_str);
+                cmd.env("HTTPS_PROXY", prx_str);
+                cmd.env("http_proxy", prx_str);
+                cmd.env("https_proxy", prx_str);
             }
         }
 
@@ -1047,9 +1134,12 @@ async fn start_download(
         // following a known value-flag is admitted verbatim but is bounded to 256 chars.
         if let Some(ref flags) = custom_flags {
             // Flags that stand alone (no following value)
+            // F-21: removed --no-check-certificates. It enables MITM by any
+            // network attacker. If a user has a legitimate need (self-signed
+            // proxy cert), they can add the yt-dlp arg via a config file —
+            // not through Devizee's UI.
             const ALLOWED_LONE: &[&str] = &[
                 "--geo-bypass",
-                "--no-check-certificates",
                 "--no-part",
                 "--no-playlist",
                 "--prefer-free-formats",
@@ -1217,6 +1307,102 @@ async fn start_download(
             },
         );
 
+        // ─── F-11: Inactivity watchdog ───
+        // If yt-dlp emits nothing on stdout/stderr for 45 consecutive seconds
+        // (after a 45s grace window for metadata + connection handshake), assume
+        // the socket is dead and kill the process tree. Without this, a hung
+        // yt-dlp on a silent TCP connection leaks its worker thread forever.
+        let last_activity = Arc::new(Mutex::new(std::time::Instant::now()));
+        let last_activity_stderr = last_activity.clone();
+        let last_activity_stdout = last_activity.clone();
+        let watchdog_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let watchdog_alive_clone = watchdog_alive.clone();
+        let watchdog_pid = pid;
+        let watchdog_task_id = task_id_clone.clone();
+        let watchdog_app = app_clone.clone();
+
+        std::thread::spawn(move || {
+            const CHECK_INTERVAL_SECS: u64 = 15;
+            const INACTIVITY_LIMIT_SECS: u64 = 45;
+            const WATCHDOG_GRACE_SECS: u64 = 45;
+
+            // Grace period: metadata extraction + first TCP handshake can
+            // legitimately take 20-30s on slow networks.
+            std::thread::sleep(std::time::Duration::from_secs(WATCHDOG_GRACE_SECS));
+
+            loop {
+                if !watchdog_alive_clone.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(CHECK_INTERVAL_SECS));
+                if !watchdog_alive_clone.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+
+                let since_last = match last_activity.lock() {
+                    Ok(t) => t.elapsed().as_secs(),
+                    Err(_) => continue,
+                };
+
+                if since_last >= INACTIVITY_LIMIT_SECS {
+                    eprintln!(
+                        "[Devizee Watchdog] No output from PID {} for {}s — killing (task {})",
+                        watchdog_pid, since_last, watchdog_task_id
+                    );
+
+                    #[cfg(target_os = "windows")]
+                    {
+                        let mut kill_cmd = Command::new("taskkill");
+                        kill_cmd.args(["/F", "/T", "/PID", &watchdog_pid.to_string()]);
+                        kill_cmd.creation_flags(0x08000000);
+                        let _ = kill_cmd.status();
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        let _ = Command::new("kill")
+                            .args(["-9", &watchdog_pid.to_string()])
+                            .status();
+                    }
+
+                    let _ = watchdog_app.emit(
+                        "download-progress",
+                        DownloadProgressPayload {
+                            task_id: watchdog_task_id.clone(),
+                            percent: 0.0,
+                            speed: "".to_string(),
+                            eta: "".to_string(),
+                            status: DownloadStatus::Error,
+                            error_code: Some("network".to_string()),
+                            error: Some(format!(
+                                "Download stalled — no data received for {} seconds. The connection may be dead. Retry from the Downloads tab.",
+                                since_last
+                            )),
+                            file_path: None,
+                        },
+                    );
+
+                    if let Some(state) = watchdog_app.try_state::<AppState>() {
+                        if let Ok(conn) = state.db_conn.lock() {
+                            let _ = db::update_download_status(
+                                &conn,
+                                &watchdog_task_id,
+                                &DownloadStatus::Error,
+                                0.0,
+                                None,
+                                Some("network"),
+                                Some("Download stalled — no data received. Retry from Downloads tab."),
+                            );
+                        }
+                        if let Ok(mut procs) = state.active_processes.lock() {
+                            procs.remove(&watchdog_task_id);
+                        }
+                    }
+
+                    return;
+                }
+            }
+        });
+
         let stderr = child.stderr.take().unwrap();
         let error_logs = Arc::new(Mutex::new(Vec::new()));
         let error_logs_clone = error_logs.clone();
@@ -1232,6 +1418,10 @@ async fn start_download(
             while let Ok(n) = reader.read_until(b'\n', &mut buf) {
                 if n == 0 {
                     break;
+                }
+                // F-11: touch activity timestamp on every stderr line
+                if let Ok(mut t) = last_activity_stderr.lock() {
+                    *t = std::time::Instant::now();
                 }
                 let line = String::from_utf8_lossy(&buf).trim_end().to_string();
                 buf.clear();
@@ -1270,6 +1460,10 @@ async fn start_download(
             while let Ok(n) = reader.read_until(b'\n', &mut buf) {
                 if n == 0 {
                     break;
+                }
+                // F-11: touch activity timestamp on every stdout line
+                if let Ok(mut t) = last_activity_stdout.lock() {
+                    *t = std::time::Instant::now();
                 }
                 let line = String::from_utf8_lossy(&buf).trim_end().to_string();
                 buf.clear();
@@ -1388,6 +1582,9 @@ async fn start_download(
 
         let status = child.wait();
 
+        // F-11: disarm the watchdog — process already exited, no need to kill
+        watchdog_alive.store(false, std::sync::atomic::Ordering::SeqCst);
+
         let was_active = if let Some(state) = app_clone.try_state::<AppState>() {
             if let Ok(mut procs) = state.active_processes.lock() {
                 procs.remove(&task_id_clone).is_some()
@@ -1439,12 +1636,39 @@ async fn start_download(
             #[cfg(target_os = "windows")]
             if scan_antivirus.unwrap_or(false) {
                 if let Some(ref fp) = final_file_path {
-                    let mpcmdrun = r"C:\Program Files\Windows Defender\MpCmdRun.exe";
-                    if std::path::Path::new(mpcmdrun).exists() {
+                    // F-18: modern Windows Defender installs MpCmdRun.exe under
+                    // ProgramData\Microsoft\Windows Defender\Platform\<version>\.
+                    // The old hardcoded Program Files path is often absent.
+                    // Try both, plus the fallback via `where` for PATH-based installs.
+                    let candidates: Vec<std::path::PathBuf> = {
+                        let mut v: Vec<std::path::PathBuf> = Vec::new();
+                        // Legacy path
+                        v.push(std::path::PathBuf::from(
+                            r"C:\Program Files\Windows Defender\MpCmdRun.exe",
+                        ));
+                        // Modern Platform folder — scan for the highest version
+                        if let Ok(entries) =
+                            std::fs::read_dir(r"C:\ProgramData\Microsoft\Windows Defender\Platform")
+                        {
+                            for entry in entries.flatten() {
+                                let candidate = entry.path().join("MpCmdRun.exe");
+                                if candidate.exists() {
+                                    v.push(candidate);
+                                }
+                            }
+                        }
+                        v
+                    };
+
+                    if let Some(mpcmdrun) = candidates.iter().find(|p| p.exists()) {
                         let mut av_cmd = Command::new(mpcmdrun);
                         av_cmd.args(["-Scan", "-ScanType", "3", "-File", fp]);
                         av_cmd.creation_flags(0x08000000);
                         let _ = av_cmd.status();
+                    } else {
+                        eprintln!(
+                            "[Devizee] Antivirus scan enabled but MpCmdRun.exe not found. Skipping."
+                        );
                     }
                 }
             }
@@ -1645,7 +1869,9 @@ fn set_autostart(enable: bool) -> Result<(), String> {
                 return Err(String::from_utf8_lossy(&output.stderr).to_string());
             }
         } else {
-            let _ = Command::new("reg")
+            // F-28: log if delete fails (registry key may be absent — that's
+            // fine — but permission/other errors should be visible)
+            match Command::new("reg")
                 .args([
                     "delete",
                     r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
@@ -1654,7 +1880,22 @@ fn set_autostart(enable: bool) -> Result<(), String> {
                     "/f",
                 ])
                 .creation_flags(0x08000000)
-                .output();
+                .output()
+            {
+                Ok(out) if out.status.success() => {
+                    // Cleaned up successfully — no-op
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    // Absence of the value is expected on first disable
+                    if !stderr.to_lowercase().contains("unable to find") {
+                        eprintln!("[Devizee] Autostart delete: {}", stderr.trim());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[Devizee] Autostart delete spawn failed: {}", e);
+                }
+            }
         }
     }
     Ok(())
@@ -1777,7 +2018,8 @@ async fn fetch_playlist_info(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    let output = cmd.output().map_err(|e| e.to_string())?;
+    // F-20: 60s timeout — playlists can have 100+ entries to enumerate
+    let output = run_command_with_timeout(cmd, 60, "yt-dlp playlist fetch")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1891,7 +2133,8 @@ async fn search_youtube(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    let output = cmd.output().map_err(|e| e.to_string())?;
+    // F-20: 30s timeout
+    let output = run_command_with_timeout(cmd, 30, "YouTube search")?;
     if !output.status.success() {
         return Err("YouTube search failed".to_string());
     }
@@ -1964,6 +2207,54 @@ struct AppState {
     download_semaphore: std::sync::Arc<tokio::sync::Semaphore>,
 }
 
+/// F-10: Verify a PID still belongs to one of our known sidecar binaries
+/// before we taskkill it. Prevents killing an innocent process when Windows
+/// has recycled the PID between read and kill.
+#[cfg(target_os = "windows")]
+fn is_safe_to_kill(pid: u32) -> bool {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    unsafe {
+        // Open with minimal rights — just enough to read the image name
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle == 0 || handle == INVALID_HANDLE_VALUE {
+            // Process no longer exists — safe to skip killing
+            return false;
+        }
+
+        let mut buf: [u16; 260] = [0; 260];
+        let mut size: u32 = 260;
+        let ok = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32 as u32,
+            buf.as_mut_ptr(),
+            &mut size,
+        );
+        let _ = CloseHandle(handle);
+
+        if ok == 0 {
+            // Query failed — treat as "not our process"
+            return false;
+        }
+
+        let path_str = std::ffi::OsString::from_wide(&buf[..size as usize])
+            .to_string_lossy()
+            .to_lowercase();
+        // Only yt-dlp and ffmpeg are legitimate targets
+        path_str.contains("yt-dlp") || path_str.contains("ffmpeg")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_safe_to_kill(_pid: u32) -> bool {
+    true
+}
+
 #[tauri::command]
 async fn pause_download(
     task_id: String,
@@ -1979,18 +2270,26 @@ async fn pause_download(
     };
 
     if let Some(pid) = pid_opt {
-        #[cfg(target_os = "windows")]
-        {
-            let mut kill_cmd = Command::new("taskkill");
-            kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
-            kill_cmd.creation_flags(0x08000000);
-            let _ = kill_cmd.status();
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let mut kill_cmd = Command::new("kill");
-            kill_cmd.args(["-9", &pid.to_string()]);
-            let _ = kill_cmd.status();
+        // F-10: verify the PID still belongs to our yt-dlp/ffmpeg before kill.
+        if is_safe_to_kill(pid) {
+            #[cfg(target_os = "windows")]
+            {
+                let mut kill_cmd = Command::new("taskkill");
+                kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+                kill_cmd.creation_flags(0x08000000);
+                let _ = kill_cmd.status();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut kill_cmd = Command::new("kill");
+                kill_cmd.args(["-9", &pid.to_string()]);
+                let _ = kill_cmd.status();
+            }
+        } else {
+            eprintln!(
+                "[Devizee] Pause: PID {} no longer matches yt-dlp/ffmpeg — skipping kill (already exited)",
+                pid
+            );
         }
     }
 
@@ -2031,18 +2330,26 @@ async fn cancel_download(
     };
 
     if let Some(pid) = pid_opt {
-        #[cfg(target_os = "windows")]
-        {
-            let mut kill_cmd = Command::new("taskkill");
-            kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
-            kill_cmd.creation_flags(0x08000000);
-            let _ = kill_cmd.status();
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let mut kill_cmd = Command::new("kill");
-            kill_cmd.args(["-9", &pid.to_string()]);
-            let _ = kill_cmd.status();
+        // F-10: verify the PID still belongs to our yt-dlp/ffmpeg before kill.
+        if is_safe_to_kill(pid) {
+            #[cfg(target_os = "windows")]
+            {
+                let mut kill_cmd = Command::new("taskkill");
+                kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+                kill_cmd.creation_flags(0x08000000);
+                let _ = kill_cmd.status();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut kill_cmd = Command::new("kill");
+                kill_cmd.args(["-9", &pid.to_string()]);
+                let _ = kill_cmd.status();
+            }
+        } else {
+            eprintln!(
+                "[Devizee] Cancel: PID {} no longer matches yt-dlp/ffmpeg — skipping kill (already exited)",
+                pid
+            );
         }
     }
 
@@ -2153,7 +2460,13 @@ async fn read_local_file(path: String, app: tauri::AppHandle) -> Result<Vec<u8>,
     // Try to canonicalize the allowed root; if it doesn't exist yet, use it as-is
     let allowed_canonical = allowed_root.canonicalize().unwrap_or(allowed_root);
 
-    if !canonical.starts_with(&allowed_canonical) {
+    // F-16: normalize case on Windows for UNC path prefix comparison.
+    // Drive letters and UNC prefixes are case-insensitive but Path::starts_with
+    // is byte-comparison. Convert both to lowercase strings before comparing.
+    let canon_str = canonical.to_string_lossy().to_lowercase();
+    let allowed_str = allowed_canonical.to_string_lossy().to_lowercase();
+
+    if !canon_str.starts_with(&allowed_str) {
         return Err("Access denied: file is outside the Devizee download directory".to_string());
     }
 
@@ -2256,15 +2569,39 @@ pub fn run() {
                         let _ = app.emit("open-url", target.to_string());
                     }
                 } else if arg.starts_with("streamgrab://download?url=") {
-                    // SEC-8: Validate the extracted URL before dispatching.
-                    // Only http/https URLs are valid download targets.
+                    // F-27: hardened deep-link validation.
+                    // - Reject any URL containing a null byte (truncation trick)
+                    // - Reject any URL with control characters
+                    // - Reject anything that isn't http/https after ONE decode pass
+                    // - Cap length to prevent DoS via giant pasted URLs
                     let raw = arg.trim_start_matches("streamgrab://download?url=");
-                    // Basic percent-decode of the first layer only (URL contains encoded URL)
-                    let decoded = raw.replace("%3A", ":").replace("%2F", "/");
-                    if decoded.starts_with("http://") || decoded.starts_with("https://") {
-                        let _ = app.emit("open-url", decoded);
+
+                    if raw.len() > 2048 {
+                        eprintln!("[Devizee] Deep link rejected: URL exceeds 2048 chars");
+                    } else if raw.contains('\0')
+                        || raw.chars().any(|c| c.is_control() && c != '\t')
+                    {
+                        eprintln!("[Devizee] Deep link rejected: contains null/control chars");
+                    } else {
+                        // Single percent-decode of the transport layer only.
+                        // The embedded URL is not recursively decoded, so
+                        // double-encoded schemes like %256a... cannot slip
+                        // through as javascript: after decoding.
+                        let decoded = raw
+                            .replace("%3A", ":")
+                            .replace("%3a", ":")
+                            .replace("%2F", "/")
+                            .replace("%2f", "/");
+
+                        if decoded.starts_with("http://") || decoded.starts_with("https://") {
+                            let _ = app.emit("open-url", decoded);
+                        } else {
+                            eprintln!(
+                                "[Devizee] Deep link rejected: scheme not http/https ({})",
+                                &decoded.chars().take(40).collect::<String>()
+                            );
+                        }
                     }
-                    // Non-http URLs (file://, javascript:, data:, etc.) are silently dropped
                 } else if arg.starts_with("http://") || arg.starts_with("https://") {
                     // Already a validated http/https URL from the single-instance argv
                     let _ = app.emit("open-url", arg.to_string());
@@ -2320,6 +2657,100 @@ pub fn run() {
                 download_semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(3)),
             });
 
+            // ─── SC-1: Sleep / hibernate detection ───
+            // Windows doesn't easily expose WM_POWERBROADCAST to Tauri v2.
+            // We detect sleep via wall-clock jumps: if Instant::now() advances
+            // by >30 seconds during a 5-second check cycle, the system was
+            // almost certainly suspended. On detection we kill active yt-dlp
+            // processes (they'd hang on dead sockets after wake) and mark
+            // their tasks as Interrupted so the user can resume.
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    const CHECK_INTERVAL_SECS: u64 = 5;
+                    const SLEEP_THRESHOLD_SECS: u64 = 30;
+
+                    let mut last_check = std::time::Instant::now();
+
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(CHECK_INTERVAL_SECS));
+                        let now = std::time::Instant::now();
+                        let elapsed = now.duration_since(last_check).as_secs();
+                        last_check = now;
+
+                        if elapsed > SLEEP_THRESHOLD_SECS {
+                            eprintln!(
+                                "[Devizee] Sleep detected ({}s jump). Interrupting active downloads.",
+                                elapsed
+                            );
+
+                            if let Some(state) = app_handle.try_state::<AppState>() {
+                                // Snapshot the process map. Vec is owned so we
+                                // can consume it in the loop.
+                                let victims: Vec<(String, u32)> = {
+                                    match state.active_processes.lock() {
+                                        Ok(procs) => procs
+                                            .iter()
+                                            .map(|(k, v)| (k.clone(), *v))
+                                            .collect(),
+                                        Err(_) => Vec::new(),
+                                    }
+                                };
+
+                                // Capture emptiness BEFORE the loop consumes victims.
+                                let had_victims = !victims.is_empty();
+
+                                for (task_id, pid) in victims {
+                                    #[cfg(target_os = "windows")]
+                                    {
+                                        let mut kill_cmd = Command::new("taskkill");
+                                        kill_cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+                                        kill_cmd.creation_flags(0x08000000);
+                                        let _ = kill_cmd.status();
+                                    }
+                                    #[cfg(not(target_os = "windows"))]
+                                    {
+                                        let _ = Command::new("kill")
+                                            .args(["-9", &pid.to_string()])
+                                            .status();
+                                    }
+
+                                    if let Ok(mut procs) = state.active_processes.lock() {
+                                        procs.remove(&task_id);
+                                    }
+
+                                    if let Ok(conn) = state.db_conn.lock() {
+                                        let _ = db::update_status_only(
+                                            &conn,
+                                            &task_id,
+                                            &DownloadStatus::Interrupted,
+                                        );
+                                    }
+
+                                    let _ = app_handle.emit(
+                                        "download-progress",
+                                        DownloadProgressPayload {
+                                            task_id: task_id.clone(),
+                                            percent: 0.0,
+                                            speed: "Paused after system wake".to_string(),
+                                            eta: "--".to_string(),
+                                            status: DownloadStatus::Interrupted,
+                                            error_code: None,
+                                            error: None,
+                                            file_path: None,
+                                        },
+                                    );
+                                }
+
+                                if had_victims {
+                                    let _ = app_handle.emit("system-woke-from-sleep", ());
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
             // System tray icon + menu
             let open_item = MenuItem::with_id(app, "open", "Open Devizee", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -2364,6 +2795,34 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // ─── SC-3: sidecar binary fingerprint check ───
+            // Compute SHA-256 of the resolved yt-dlp and ffmpeg binaries
+            // and emit them to the frontend. The frontend compares against
+            // a stored baseline (localStorage) and notifies the user if the
+            // hashes changed — indicating possible tampering or a legitimate
+            // binary update.
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    // Small delay so the main window is ready to receive events
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+
+                    let yt_dlp_hash = get_yt_dlp_path(&app_handle)
+                        .ok()
+                        .and_then(|p| compute_file_sha256(&p));
+                    let ffmpeg_hash = get_ffmpeg_path(&app_handle)
+                        .and_then(|p| compute_file_sha256(&p));
+
+                    let _ = app_handle.emit(
+                        "sidecar-fingerprint",
+                        serde_json::json!({
+                            "yt_dlp": yt_dlp_hash,
+                            "ffmpeg": ffmpeg_hash,
+                        }),
+                    );
+                });
+            }
 
             Ok(())
         })

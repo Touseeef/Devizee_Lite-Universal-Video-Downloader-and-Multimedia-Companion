@@ -19,6 +19,7 @@ export function WaveformVisualizer({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const progressRef = useRef(0);
 
+
     // Track playback position via standard HTML5 media events (0% CPU overhead, no polling RAF)
     useEffect(() => {
         if (!mediaElement) {
@@ -47,6 +48,8 @@ export function WaveformVisualizer({
     }, [mediaElement]);
 
     // Animated draw loop with HiDPI support & audio physics
+    // D4: theme colors are re-read inside the loop (throttled to 1× per 30 frames)
+    // so switching themes mid-playback recolors the waveform live.
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -60,10 +63,16 @@ export function WaveformVisualizer({
         canvas.style.height = `${height}px`;
         ctx.scale(dpr, dpr);
 
-        // Precompute theme colors ONCE per effect run — NEVER inside the 60fps draw callback!
-        const cs = getComputedStyle(document.documentElement);
-        const accent = cs.getPropertyValue("--color-accent").trim() || "#14b8a6";
-        const inactive = cs.getPropertyValue("--color-border-strong").trim() || "#475569";
+        // Cache theme colors here so we don't call getComputedStyle on every frame.
+        // Refreshed every ~0.5s from within the draw loop below.
+        let accent = "#14b8a6";
+        let inactive = "#475569";
+        const refreshColors = () => {
+            const cs = getComputedStyle(document.documentElement);
+            accent = cs.getPropertyValue("--color-accent").trim() || "#14b8a6";
+            inactive = cs.getPropertyValue("--color-border-strong").trim() || "#475569";
+        };
+        refreshColors();
 
         const gap = 1.5;
         const barW = Math.max(1.5, (width - (barCount - 1) * gap) / barCount);
@@ -75,6 +84,7 @@ export function WaveformVisualizer({
 
         // Clean static resting state: draw clean, flat 2px rounded pills and stop RAF loop completely
         if (!isPlaying) {
+            refreshColors();     // D4: pick up current theme colors when paused too
             ctx.clearRect(0, 0, width, height);
             ctx.fillStyle = inactive;
             ctx.globalAlpha = 0.35;
@@ -94,10 +104,16 @@ export function WaveformVisualizer({
             return;
         }
 
+        let frameCount = 0;
         const draw = (now: number) => {
             raf = requestAnimationFrame(draw);
             if (last !== null) phase += (now - last) * 0.007;
             last = now;
+
+            // D4: refresh theme colors every 30 frames (~0.5s at 60fps) so
+            // theme switches recolor the bars without a full re-mount.
+            frameCount++;
+            if (frameCount % 30 === 0) refreshColors();
 
             ctx.clearRect(0, 0, width, height);
 
