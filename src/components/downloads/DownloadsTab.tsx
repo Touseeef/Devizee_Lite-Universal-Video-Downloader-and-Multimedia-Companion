@@ -114,10 +114,10 @@ export function DownloadsTab({
                         </div>
                         <div className="min-w-0">
                             <p className="text-body-sm font-bold text-primary">
-                                {interruptedCount} interrupted {interruptedCount === 1 ? "download" : "downloads"} detected
+                                {interruptedCount} paused {interruptedCount === 1 ? "download" : "downloads"}
                             </p>
                             <p className="text-caption text-secondary truncate">
-                                These can be resumed from their .part files. No progress was lost.
+                                These can be resumed at any time. No progress was lost.
                             </p>
                         </div>
                     </div>
@@ -127,7 +127,7 @@ export function DownloadsTab({
                                 type="button"
                                 onClick={onResumeAll}
                                 className="px-3 py-1.5 rounded-lg bg-status-warning hover:bg-status-warning/90 text-white text-caption font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                                title="Resume all interrupted downloads"
+                                title="Resume all paused downloads"
                             >
                                 <Play size={12} fill="currentColor" />
                                 <span>Resume All</span>

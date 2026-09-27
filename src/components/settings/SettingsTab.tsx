@@ -178,6 +178,13 @@ export function SettingsTab({
                         onChange={(v) => updateSetting("minimizeToTray", v)}
                     />
 
+                    <SettingToggle
+                        title="Warn Before Closing Active Downloads"
+                        desc="Show confirmation when closing app with active downloading tasks"
+                        checked={settings.warnOnCloseActiveDownloads !== false}
+                        onChange={(v) => updateSetting("warnOnCloseActiveDownloads", v)}
+                    />
+
                     <SettingRow title={t("settings_updates")} desc="Check GitHub for newer releases and yt-dlp patches">
                         <select
                             value={settings.checkUpdates}
@@ -281,72 +288,6 @@ export function SettingsTab({
                         </div>
                     </SettingRow>
 
-                    <SettingRow title="Documents Location" desc="Custom directory for documents (.pdf, .docx, .txt, .epub)">
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="text"
-                                readOnly
-                                placeholder={`${settings.saveFolder || "Downloads/Devizee"}/Documents`}
-                                value={settings.documentsFolder || settings.generalFolder || ""}
-                                className="bg-surface-2 border border-border-subtle rounded-md px-2.5 py-1.5 text-caption text-primary outline-none w-44 truncate placeholder:text-secondary"
-                                title={
-                                    settings.documentsFolder ||
-                                    settings.generalFolder ||
-                                    `${settings.saveFolder || "Downloads/Devizee"}/Documents`
-                                }
-                            />
-                            <button
-                                type="button"
-                                onClick={() => handleBrowseFolder("documentsFolder")}
-                                className="px-3 py-1 rounded-md bg-surface-2 hover:bg-surface-3 text-caption font-semibold border border-border-subtle cursor-pointer"
-                            >
-                                Browse...
-                            </button>
-                            {(settings.documentsFolder || settings.generalFolder) && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        updateSetting("documentsFolder", "");
-                                        updateSetting("generalFolder", "");
-                                    }}
-                                    className="px-2 py-1 rounded-md text-caption text-tertiary hover:text-status-danger cursor-pointer"
-                                    title="Reset to default subfolder"
-                                >
-                                    Reset
-                                </button>
-                            )}
-                        </div>
-                    </SettingRow>
-
-                    <SettingRow title="Compressed Archives Location" desc="Custom directory for archives (.zip, .rar, .7z, .tar, .gz)">
-                        <div className="flex items-center gap-2">
-                            <input
-                                type="text"
-                                readOnly
-                                placeholder={`${settings.saveFolder || "Downloads/Devizee"}/Compressed`}
-                                value={settings.compressedFolder || ""}
-                                className="settings-input"
-                                title={settings.compressedFolder || `${settings.saveFolder || "Downloads/Devizee"}/Compressed`}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => handleBrowseFolder("compressedFolder")}
-                                className="px-3 py-1 rounded-md bg-surface-2 hover:bg-surface-3 text-caption font-semibold border border-border-subtle cursor-pointer"
-                            >
-                                Browse...
-                            </button>
-                            {settings.compressedFolder && (
-                                <button
-                                    type="button"
-                                    onClick={() => updateSetting("compressedFolder", "")}
-                                    className="px-2 py-1 rounded-md text-caption text-tertiary hover:text-status-danger cursor-pointer"
-                                    title="Reset to default subfolder"
-                                >
-                                    Reset
-                                </button>
-                            )}
-                        </div>
-                    </SettingRow>
 
                     <SettingRow
                         title="Temporary / In-Progress Files Location"

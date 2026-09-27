@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { AlertCircle, Download, Film, Layers, Loader2, Music, Pause, Play, RotateCcw, RotateCw, Trash2, Volume2 } from "lucide-react";
 import type { FormatOption } from "../../types";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
+import { formatFileSize, parseTimeToSeconds, estimateFormatBytes } from "../../lib/format";
 
 export type BatchItem = {
     id: string;
@@ -164,6 +165,12 @@ export function BatchQueuePanel({
         MORE_BATCH_VIDEO_PRESETS.some((p) => p.id === selectedGlobalPreset) ||
         MORE_BATCH_AUDIO_PRESETS.some((p) => p.id === selectedGlobalPreset);
 
+    const totalBatchBytes = items.reduce((acc, item) => {
+        const secs = parseTimeToSeconds(item.duration_string || "");
+        const bytes = estimateFormatBytes(item.format, secs);
+        return acc + (bytes || 0);
+    }, 0);
+
     return (
         <div className="bg-surface-1 rounded-2xl p-5 border border-border-subtle shadow-sm space-y-4 animate-in fade-in duration-fast">
             {/* Header with Global Format Bar */}
@@ -176,7 +183,7 @@ export function BatchQueuePanel({
                         <div className="flex items-center gap-2">
                             <h3 className="text-body font-bold text-primary">Batch Download Queue</h3>
                             <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-bold bg-accent text-white shadow-2xs">
-                                {items.length} items
+                                {items.length} items{totalBatchBytes > 0 ? ` • ~${formatFileSize(totalBatchBytes)}` : ""}
                             </span>
                         </div>
                         <p className="text-[11px] text-tertiary">
@@ -203,7 +210,7 @@ export function BatchQueuePanel({
                         title="Start downloading all items in this batch"
                     >
                         <Download size={16} strokeWidth={2.5} />
-                        <span>Download All ({items.length} Media)</span>
+                        <span>Download All ({items.length} Media{totalBatchBytes > 0 ? ` • ~${formatFileSize(totalBatchBytes)}` : ""})</span>
                     </button>
                 </div>
             </div>
@@ -341,7 +348,11 @@ export function BatchQueuePanel({
                                                 </span>
                                             ) : (
                                                 <span className="font-mono text-tertiary truncate">
-                                                    {item.estimatedSize || "Standard stream"}
+                                                    {item.estimatedSize || (() => {
+                                                        const secs = parseTimeToSeconds(item.duration_string || "");
+                                                        const b = estimateFormatBytes(item.format, secs);
+                                                        return b && b > 0 ? `~${formatFileSize(b)}` : null;
+                                                    })() || "Standard stream"}
                                                 </span>
                                             )}
                                         </div>

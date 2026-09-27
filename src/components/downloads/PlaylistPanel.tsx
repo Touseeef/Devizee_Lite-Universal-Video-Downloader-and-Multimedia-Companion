@@ -20,6 +20,7 @@ import type {
 } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
+import { formatFileSize, parseTimeToSeconds, estimateFormatBytes } from "../../lib/format";
 
 export function PlaylistPanel({
     t,
@@ -110,6 +111,21 @@ export function PlaylistPanel({
         return globalPreset;
     };
 
+    const getEstimatedEntryBytes = (entry: PlaylistEntry, presetId: string): number => {
+        const secs = parseTimeToSeconds(entry.duration_string);
+        const preset = ALL_PRESETS.find((p) => p.id === presetId);
+        return (
+            estimateFormatBytes(
+                {
+                    resolution: preset?.id,
+                    label: preset?.label,
+                    is_audio_only: preset?.isAudio,
+                },
+                secs
+            ) || 0
+        );
+    };
+
     // "Authoritative" when every selected row resolves to the global preset.
     // Otherwise it's Mixed — some row was individually overridden.
     const selectedArray = Array.from(selectedIds);
@@ -117,6 +133,12 @@ export function PlaylistPanel({
         selectedArray.length === 0 ||
         selectedArray.every((id) => getItemPreset(id) === globalPreset);
     const hasMixedFormats = selectedArray.length > 0 && !globalDropdownActive;
+
+    const totalSelectedBytes = selectedArray.reduce((acc, id) => {
+        const entry = playlistInfo?.entries.find((e) => e.id === id);
+        if (!entry) return acc;
+        return acc + getEstimatedEntryBytes(entry, getItemPreset(id));
+    }, 0);
 
     if (!playlistInfo && !isLoadingPlaylist) return null;
 
@@ -139,7 +161,7 @@ export function PlaylistPanel({
                         </h4>
                         <p className="text-caption text-secondary">
                             {playlistInfo
-                                ? `${playlistInfo.entries.length} videos detected • ${selectedIds.size} selected`
+                                ? `${playlistInfo.entries.length} videos detected • ${selectedIds.size} selected${totalSelectedBytes > 0 ? ` (~${formatFileSize(totalSelectedBytes)})` : ""}`
                                 : "Analyzing list..."}
                         </p>
                     </div>
@@ -237,7 +259,7 @@ export function PlaylistPanel({
                             >
                                 <Download size={13} />
                                 <span>
-                                    {t("download_selected")} ({selectedIds.size})
+                                    {t("download_selected")} ({selectedIds.size}{totalSelectedBytes > 0 ? ` • ~${formatFileSize(totalSelectedBytes)}` : ""})
                                 </span>
                             </button>
                         </div>
@@ -300,6 +322,10 @@ export function PlaylistPanel({
                                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                                 <span className="text-caption text-tertiary text-[11px] whitespace-nowrap">
                                                     {entry.duration_string}
+                                                    {(() => {
+                                                        const est = getEstimatedEntryBytes(entry, getItemPreset(entry.id));
+                                                        return est > 0 ? ` • ~${formatFileSize(est)}` : "";
+                                                    })()}
                                                 </span>
                                                 {entryTask && (
                                                     <span

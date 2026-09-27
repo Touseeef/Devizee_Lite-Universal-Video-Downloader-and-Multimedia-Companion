@@ -221,8 +221,9 @@ export const HistoryItem = React.memo(function HistoryItem({
                                 {display.colorToken === "accent" && (
                                     <Loader2 size={10} className="animate-spin" />
                                 )}
-                                {display.label}{" "}
-                                {record.status === "downloading" && `${record.percent.toFixed(0)}%`}
+                                {display.label}
+                                {record.status === "downloading" && ` ${record.percent.toFixed(0)}%`}
+                                {record.status === "interrupted" && record.percent > 0 && ` · ${record.percent.toFixed(0)}%`}
                             </span>
                         )}
 

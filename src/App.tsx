@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { invoke, convertFileSrc } from "@tauri-apps/api/core"; import { listen } from "@tauri-apps/api/event";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 import { AlertCircle } from "lucide-react";
@@ -30,6 +31,7 @@ import { createTranslator } from "./lib/i18n";
 import { globalAudioState, routeAudioDevice, applyEqualizerPreset, attachEqualizerToMedia } from "./lib/audioContext";
 
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
+import { CloseAppConfirmDialog } from "./components/common/CloseAppConfirmDialog";
 import { SettingsTab } from "./components/settings/SettingsTab";
 import { MultimediaTab } from "./components/media/MultimediaTab";
 import { DownloadsTab } from "./components/downloads/DownloadsTab";
@@ -350,6 +352,8 @@ export default function App() {
   const completedBatch = useRef<string[]>([]);
   const errorBatch = useRef<string[]>([]);
   const notificationTimer = useRef<any>(null);
+  const userPausedTaskIds = useRef<Set<string>>(new Set());
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
 
   // YouTube Keyword Search State
   const [searchResults, setSearchResults] = useState<PlaylistEntry[] | null>(null);
@@ -1126,6 +1130,73 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.showNotifications]);
 
+  // Window close interceptor: hide to tray if minimizeToTray is enabled;
+  // otherwise, prompt if downloads are running before exiting cleanly.
+  const requestAppClose = useCallback(async () => {
+    if (settings.minimizeToTray) {
+      try {
+        await getCurrentWindow().hide();
+      } catch (err) {
+        console.error("Failed to hide to tray:", err);
+      }
+      return;
+    }
+
+    const currentActive = historyRef.current.filter(
+      (h) => h.status === "downloading" || h.status === "muxing" || h.status === "starting"
+    ).length;
+
+    if (currentActive > 0 && settings.warnOnCloseActiveDownloads !== false) {
+      setIsCloseConfirmOpen(true);
+      return;
+    }
+
+    try {
+      await invoke("exit_app");
+    } catch {
+      try {
+        await getCurrentWindow().close();
+      } catch { }
+    }
+  }, [settings.minimizeToTray, settings.warnOnCloseActiveDownloads]);
+
+  const handleConfirmCloseApp = async (dontWarnAgain: boolean) => {
+    setIsCloseConfirmOpen(false);
+    if (dontWarnAgain) {
+      updateSetting("warnOnCloseActiveDownloads", false);
+    }
+    try {
+      await invoke("exit_app");
+    } catch {
+      try {
+        await getCurrentWindow().close();
+      } catch { }
+    }
+  };
+
+  const handleCancelCloseApp = () => {
+    setIsCloseConfirmOpen(false);
+  };
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    const appWindow = getCurrentWindow();
+    appWindow
+      .onCloseRequested(async (event) => {
+        event.preventDefault();
+        await requestAppClose();
+      })
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((err) => {
+        console.error("Failed to register onCloseRequested handler:", err);
+      });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [requestAppClose]);
 
   // Listen to YouTube iframe state changes so nowPlaying and audio exclusivity reflect reality.
 
@@ -1244,7 +1315,10 @@ export default function App() {
           clearTimeout(notificationTimer.current);
           notificationTimer.current = setTimeout(flushNotifications, 1800);
         } else if (p.status === "interrupted" && oldStatus !== "interrupted") {
-          if (settings.showNotifications) {
+          const wasUserPaused = userPausedTaskIds.current.has(p.task_id);
+          if (wasUserPaused) {
+            userPausedTaskIds.current.delete(p.task_id);
+          } else if (settings.showNotifications) {
             sendNotification({
               title: "Devizee - Download Interrupted",
               body: "A download was interrupted. Open the Downloads tab to resume, restart, or cancel it.",
@@ -2383,6 +2457,7 @@ export default function App() {
   }, [history]);
 
   const handlePauseDownload = async (taskId: string) => {
+    userPausedTaskIds.current.add(taskId);
     try {
       await invoke("pause_download", { taskId });
     } catch (err) {
@@ -2403,6 +2478,7 @@ export default function App() {
   const handlePauseAll = async () => {
     for (const h of history) {
       if (h.status === "downloading" || h.status === "starting" || h.status === "fetching_metadata" || h.status === "muxing") {
+        userPausedTaskIds.current.add(h.id);
         try {
           await invoke("pause_download", { taskId: h.id });
         } catch { }
@@ -2432,6 +2508,7 @@ export default function App() {
 
   const handlePauseSelected = async () => {
     for (const id of selectedHistoryItems) {
+      userPausedTaskIds.current.add(id);
       try {
         await invoke("pause_download", { taskId: id });
       } catch { }
@@ -2465,6 +2542,8 @@ export default function App() {
   return (
     <AppShell
       mainRef={mainScrollRef}
+      minimizeToTray={settings.minimizeToTray}
+      onCloseClick={requestAppClose}
       sidebar={(collapsed, onToggleCollapse) => (
         <Sidebar
           collapsed={collapsed}
@@ -2883,6 +2962,13 @@ export default function App() {
           onCancel={() => setConfirmDialogState(null)}
         />
       )}
+
+      <CloseAppConfirmDialog
+        isOpen={isCloseConfirmOpen}
+        activeCount={history.filter(h => h.status === "downloading" || h.status === "muxing" || h.status === "starting").length}
+        onContinueDownloading={handleCancelCloseApp}
+        onCloseApp={handleConfirmCloseApp}
+      />
     </AppShell>
   );
 }

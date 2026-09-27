@@ -89,7 +89,20 @@ export function MultimediaTab({
     const [mediaFilter, setMediaFilter] = useState<"all" | "videos" | "audios">("all");
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+    const [viewMode, setViewModeState] = useState<"grid" | "list">(() => {
+        try {
+            const saved = localStorage.getItem("devizee_media_view_mode");
+            if (saved === "grid" || saved === "list") return saved;
+        } catch { }
+        return "grid";
+    });
+
+    const setViewMode = (mode: "grid" | "list") => {
+        setViewModeState(mode);
+        try {
+            localStorage.setItem("devizee_media_view_mode", mode);
+        } catch { }
+    };
     const [videoError, setVideoError] = useState<string | null>(null);
 
     // In-App Player State
@@ -206,6 +219,7 @@ export function MultimediaTab({
             setIsFullscreen(false);
         }
     };
+
 
     // Keyboard Shortcuts for Multimedia Hub (Space, Arrows, M, F, Esc)
     useEffect(() => {
@@ -578,6 +592,12 @@ export function MultimediaTab({
                         <div
                             ref={mediaContainerRef}
                             onWheel={handleWheelVolume}
+                            onDoubleClick={(e) => {
+                                if (!isFullscreen) return;
+                                if ((e.target as HTMLElement).closest("[data-queue-drawer], button, input, select")) return;
+                                e.stopPropagation();
+                                toggleFullscreen();
+                            }}
                             className="lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
                         >
                             {activeItemIsVideo ? (
@@ -652,7 +672,7 @@ export function MultimediaTab({
                                     className="absolute inset-0 bg-black/40 flex items-center justify-center transition-colors cursor-pointer"
                                     title="Play"
                                 >
-                                    <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
+                                    <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg hover:scale-105 transition-transform pointer-events-none">
                                         <Play size={18} fill="currentColor" className="ml-0.5" />
                                     </div>
                                 </button>
@@ -663,10 +683,10 @@ export function MultimediaTab({
                                 <button
                                     type="button"
                                     onClick={toggleFullscreen}
-                                    className="absolute top-2 right-2 w-7 h-7 rounded-md bg-black/70 hover:bg-black/90 text-white flex items-center justify-center transition-opacity opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-sm"
-                                    title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Video"}
+                                    className="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg bg-black/60 hover:bg-black/85 hover:scale-105 active:scale-95 text-white/90 hover:text-white backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-md"
+                                    title={isFullscreen ? "Exit Fullscreen (Esc or Double-Click)" : "Fullscreen Video"}
                                 >
-                                    {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                                    {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
                                 </button>
                             )}
 

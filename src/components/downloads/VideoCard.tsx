@@ -21,7 +21,7 @@ import {
     X,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { formatFileSize } from "../../lib/format";
+import { formatFileSize, formatEstimatedSize } from "../../lib/format";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
 import type { DownloadRecord, FormatOption, VideoInfo } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
@@ -870,8 +870,8 @@ export function VideoCard({
                                 {isStartingDownload
                                     ? "Starting Download..."
                                     : isAudioSelected
-                                        ? `Download Audio (${selectedFormat?.label || "MP3"})`
-                                        : `Download Video (${selectedFormat?.label || "Best Quality"})`}
+                                        ? `Download Audio (${selectedFormat?.label || "MP3"}${formatEstimatedSize(selectedFormat, videoInfo.duration) ? ` • ${formatEstimatedSize(selectedFormat, videoInfo.duration)}` : ""})`
+                                        : `Download Video (${selectedFormat?.label || "Best Quality"}${formatEstimatedSize(selectedFormat, videoInfo.duration) ? ` • ${formatEstimatedSize(selectedFormat, videoInfo.duration)}` : ""})`}
                             </span>
                         </button>
 

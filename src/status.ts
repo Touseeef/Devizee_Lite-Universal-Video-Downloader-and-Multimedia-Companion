@@ -107,7 +107,7 @@ export const STATUS_DISPLAY: Record<TaskStatus, StatusDisplay> = {
     isTerminal: true,
   },
   interrupted: {
-    label: "Interrupted — Resume?",
+    label: "Paused",
     colorToken: "status-warning",
     progressMode: "hidden",
     isTerminal: false,

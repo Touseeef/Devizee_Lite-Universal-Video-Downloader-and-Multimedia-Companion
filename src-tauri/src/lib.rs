@@ -756,6 +756,12 @@ fn cleanup_orphan_part_files(root: &std::path::Path) -> usize {
     removed
 }
 
+/// Closes the application completely when the user closes the window with minimizeToTray disabled.
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 /// Frontend calls this on startup with the current saveFolder path.
 /// Returns the number of orphan files removed (0 if none).
 #[tauri::command]
@@ -2732,7 +2738,10 @@ pub fn run() {
                     loop {
                         std::thread::sleep(std::time::Duration::from_secs(CHECK_INTERVAL_SECS));
                         let now = std::time::Instant::now();
-                        let elapsed = now.duration_since(last_check).as_secs();
+                        let elapsed = now
+                            .checked_duration_since(last_check)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
                         last_check = now;
 
                         if elapsed > SLEEP_THRESHOLD_SECS {
@@ -2937,6 +2946,7 @@ pub fn run() {
             fix_legacy_paths,
             read_local_file,
             cleanup_orphan_parts,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

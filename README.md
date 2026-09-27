@@ -114,7 +114,10 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
    - **`Devizee-Lite-Setup-x.y.z.exe`** (NSIS installer — recommended)
    - or **`Devizee-Lite-x.y.z.msi`** (MSI installer)
 2. Run the installer
-3. On first launch, Windows SmartScreen may warn that the app is unsigned — click **"More info"** → **"Run anyway"**
+3. On first launch, Windows SmartScreen may display an initial warning until reputation accumulates — click **"More info"** → **"Run anyway"**
+
+> **Code Signing Notice:**
+> Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 
 **System requirements:** Windows 10 (build 1809+) or Windows 11, ~150 MB free disk space. WebView2 is bundled with modern Windows.
 
@@ -146,7 +149,7 @@ Devizee Lite is built around a **privacy-first** philosophy:
 - **Cookie handling is local.** If you enable "Cookies from Browser" for age-restricted videos, yt-dlp reads them from your local browser profile and sends them only to the source site — exactly as your browser would. They are never sent to Devizee or any Devizee server.
 - **Zero bundled bloatware.** No toolbars, no "recommended" software, no ad SDKs.
 
-See [SECURITY.md](SECURITY.md) for the threat model and disclosure policy.
+Read our full [PRIVACY.md](PRIVACY.md) and see [SECURITY.md](SECURITY.md) for the threat model and disclosure policy.
 
 ---
 
