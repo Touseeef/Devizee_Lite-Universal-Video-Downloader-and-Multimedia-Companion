@@ -246,12 +246,6 @@ export default function App() {
   const refreshAudioDevices = async () => {
     try {
       if (!navigator.mediaDevices?.enumerateDevices) return;
-      // Request temporary media permission to unlock hardware device labels in Chromium
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t => t.stop());
-      } catch (_) { }
-
       const devices = await navigator.mediaDevices.enumerateDevices();
       const outputs = devices.filter(d => d.kind === "audiooutput");
       setAudioDevices(outputs.length > 0 ? outputs : [{ deviceId: "default", label: "Default System Audio", kind: "audiooutput", groupId: "", toJSON: () => ({}) }]);
