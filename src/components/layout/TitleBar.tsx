@@ -109,7 +109,7 @@ export function TitleBar({
                     Devizee Lite
                 </span>
                 <span className="text-[10px] font-mono text-tertiary px-1.5 py-0.2 rounded bg-surface-2 border border-border-subtle/40">
-                    v0.4.0
+                    v0.5.0
                 </span>
             </div>
 

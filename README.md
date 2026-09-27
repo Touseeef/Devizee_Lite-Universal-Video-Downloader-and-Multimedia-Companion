@@ -158,8 +158,8 @@ Read our full [PRIVACY.md](PRIVACY.md) and see [SECURITY.md](SECURITY.md) for th
 ### Devizee Lite (current line)
 - ✅ v0.3.0 — Stability, auto-retry, network recovery, duplicate detection
 - ✅ v0.4.0 — Sleep/watchdog detection, Refresh URL, DB corruption recovery, GitHub issue templates
-- 🔄 v0.4.x — Ongoing polish and bug fixes
-- ⏳ v0.5.0 — Real ffmpeg merge progress, additional platform support for the extension
+- ✅ v0.5.0 — Frameless integrated titlebar, active download close-protection dialog, media player UX polish, and compliance documentation
+- 🔄 v0.5.x — Universal browser companion extension and ecosystem integration
 
 ### Devizee AIO — All-In-One Download Manager (separate product, in development)
 A broader-scope download manager that will add:

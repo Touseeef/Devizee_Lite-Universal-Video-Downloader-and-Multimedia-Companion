@@ -102,4 +102,4 @@ If you spot an inaccuracy in this document, open a PR. Corrections are welcome.
 
 ---
 
-**Last updated:** v0.4.0 (September 2026)
+**Last updated:** v0.5.0 (September 2026)
