@@ -22,11 +22,7 @@ assignees: ''
 
 ## Diagnostics
 
-Open Devizee → Settings → About → click "Copy Diagnostics". Then paste the result below.
-
-```text
-
-```
+Open Devizee → Settings → About → click "Copy Diagnostics". Paste the result below.
 
 ## Screenshots or screen recording
 
