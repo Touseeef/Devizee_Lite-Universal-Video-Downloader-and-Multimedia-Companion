@@ -12,7 +12,14 @@ export function TitleBar({
     onCloseClick?: () => void;
 }) {
     const [isMaximized, setIsMaximized] = useState(false);
+    const [appVersion, setAppVersion] = useState("0.5.1");
     const appWindow = getCurrentWindow();
+
+    useEffect(() => {
+        import("@tauri-apps/api/app").then(m => m.getVersion()).then(v => {
+            if (v) setAppVersion(v);
+        }).catch(() => {});
+    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -109,7 +116,7 @@ export function TitleBar({
                     Devizee Lite
                 </span>
                 <span className="text-[10px] font-mono text-tertiary px-1.5 py-0.2 rounded bg-surface-2 border border-border-subtle/40">
-                    v0.5.0
+                    {appVersion ? `v${appVersion}` : "v0.5.1"}
                 </span>
             </div>
 
