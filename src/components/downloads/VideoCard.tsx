@@ -1044,15 +1044,21 @@ export function VideoCard({
                             <div className="flex items-center justify-between text-caption font-semibold">
                                 <span className="flex items-center gap-1.5 text-primary">
                                     <Clock size={13} className="text-accent" />
-                                    <span>Task Status: {activeCardTask.status}</span>
+                                    <span>Task Status: {activeCardTask.status === "muxing" ? "Finalizing (Merging Audio & Video)..." : activeCardTask.status}</span>
                                 </span>
-                                <span className="font-mono text-accent">{activeCardTask.percent}%</span>
+                                <span className="font-mono text-accent">
+                                    {activeCardTask.status === "muxing" ? "Finalizing" : `${activeCardTask.percent}%`}
+                                </span>
                             </div>
                             <div className="w-full bg-surface-3 rounded-full h-1.5 overflow-hidden">
-                                <div
-                                    className="bg-accent h-full transition-all duration-300"
-                                    style={{ width: `${Math.min(100, Math.max(0, activeCardTask.percent))}%` }}
-                                />
+                                {activeCardTask.status === "muxing" ? (
+                                    <div className="indeterminate-bar h-full w-1/3 bg-accent rounded-full" />
+                                ) : (
+                                    <div
+                                        className="bg-accent h-full transition-all duration-300"
+                                        style={{ width: `${Math.min(100, Math.max(0, activeCardTask.percent))}%` }}
+                                    />
+                                )}
                             </div>
                             <div className="flex items-center justify-between text-[11px] text-tertiary">
                                 <span>{activeCardTask.speed || "Calculating..."}</span>
