@@ -1026,7 +1026,7 @@ export default function App() {
     listen<string>("open-url", (event) => {
       if (event.payload) {
         setUrl(event.payload);
-        setActiveTab("downloads");
+        setActiveTab("dashboard");
         analyzeUrl(event.payload);
       }
     }).then((f) => {

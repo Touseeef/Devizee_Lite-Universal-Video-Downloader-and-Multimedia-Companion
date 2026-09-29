@@ -17,6 +17,7 @@ import {
     Repeat,
     Repeat1,
     RotateCcw,
+    Scaling,
     Search,
     Shuffle,
     SkipBack,
@@ -146,6 +147,7 @@ export function MultimediaTab({
 
     // Queue dismissals state
     const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(new Set());
+    const [videoFitMode, setVideoFitMode] = useState<"contain" | "cover">("contain");
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -625,7 +627,11 @@ export function MultimediaTab({
                                 e.stopPropagation();
                                 toggleFullscreen();
                             }}
-                            className="lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
+                            className={
+                                isFullscreen
+                                    ? "fixed inset-0 w-screen h-screen z-50 rounded-none border-none bg-black flex items-center justify-center overflow-hidden group select-none aspect-auto"
+                                    : "lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
+                            }
                         >
                             {activeItemIsVideo ? (
                                 <video
@@ -654,7 +660,9 @@ export function MultimediaTab({
                                         }
                                     }}
                                     onEnded={handleMediaEnded}
-                                    className="w-full h-full object-contain cursor-pointer"
+                                    className={`w-full h-full cursor-pointer transition-all duration-200 ${
+                                        videoFitMode === "cover" ? "object-cover" : "object-contain"
+                                    }`}
                                     onClick={togglePlayPause}
                                 >
                                     {customSubtitleUrl && (
@@ -727,6 +735,20 @@ export function MultimediaTab({
                                 </button>
                             )}
 
+                            {/* Aspect Ratio Toggle (Fit / Fill) in Fullscreen */}
+                            {isFullscreen && activeItemIsVideo && !videoError && (
+                                <button
+                                    type="button"
+                                    onClick={() => setVideoFitMode(videoFitMode === "contain" ? "cover" : "contain")}
+                                    className={`absolute top-2.5 right-22 w-8 h-8 rounded-lg ${
+                                        videoFitMode === "cover" ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"
+                                    } hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-md`}
+                                    title={videoFitMode === "cover" ? "Aspect: Fill Screen (Click for Fit/Letterbox)" : "Aspect: Fit Screen (Click to Fill & remove black bars)"}
+                                >
+                                    <Scaling size={15} />
+                                </button>
+                            )}
+
                             {/* Fullscreen Trigger Overlay for Video */}
                             {activeItemIsVideo && !videoError && (
                                 <button
@@ -796,7 +818,7 @@ export function MultimediaTab({
 
                             {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover) */}
                             {isFullscreen && (
-                                <div className="absolute bottom-0 inset-x-0 z-40 p-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <div className="absolute bottom-0 inset-x-0 z-40 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                                     {/* Fullscreen Scrubber */}
                                     <div className="flex items-center gap-3 w-full">
                                         <span className="text-[11px] font-mono text-white/70 w-12 text-left">
@@ -906,6 +928,16 @@ export function MultimediaTab({
                                                 title={`Repeat: ${repeatMode}`}
                                             >
                                                 {repeatMode === "one" ? <Repeat1 size={16} /> : <Repeat size={16} />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setVideoFitMode(videoFitMode === "contain" ? "cover" : "contain")}
+                                                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                                                    videoFitMode === "cover" ? "text-accent bg-accent/20" : "text-white/70 hover:text-white hover:bg-white/15"
+                                                }`}
+                                                title={videoFitMode === "cover" ? "Aspect: Fill Screen (Click for Fit/Letterbox)" : "Aspect: Fit Screen (Click to Fill & remove black bars)"}
+                                            >
+                                                <Scaling size={16} />
                                             </button>
                                             <button
                                                 type="button"

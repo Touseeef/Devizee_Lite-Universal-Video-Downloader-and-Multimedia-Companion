@@ -13,6 +13,10 @@ Built with Tauri v2, Rust, React, and powered by `yt-dlp` + `ffmpeg`.
 
 ---
 
+![Devizee Lite Demo](docs/demo.gif)
+
+---
+
 ## What is Devizee Lite?
 
 Devizee Lite is a **native Windows desktop app** that downloads videos and audio from YouTube, TikTok, Instagram, Twitter/X, Facebook, Twitch, and 1,000+ other sites — with a modern UI, an 8-band equalizer, a built-in media player, and a **zero-telemetry, zero-ads, zero-nonsense** approach.
@@ -61,6 +65,8 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 - **Smart format selection** — resolution chips for 4K / 1440p / 1080p / 720p / 480p / 360p, with codec badges and estimated sizes
 - **Audio extraction** to MP3 (320 kbps), M4A, FLAC (lossless), WAV, or Opus
 - **Clip-before-download trimmer** — download only a specific section without fetching the whole file (unique in a GUI downloader)
+- **Subtitle download** — extract manual or auto-generated subtitle tracks in SRT or VTT format alongside media
+- **Dynamic MAX_PATH clamping** — automatically calculates target folder depth and truncates filenames to stay safely within Windows 260-character path limits
 - **Batch Links modal** — paste multiple URLs, import a `.txt` file, or load example links
 - **Concurrent download limit** — runs 3 downloads at a time to prevent disk thrash; queue the rest
 - **Auto-retry** for transient failures (network blips, rate limits) — silent, invisible to the user
@@ -69,6 +75,7 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 
 ### 🎵 Media & Playback
 - **Built-in multimedia hub** — play downloaded audio and video without leaving the app
+- **In-player subtitle tracks** — toggle and view downloaded subtitles directly inside the video player
 - **8-band hardware equalizer** with presets (Flat, Bass Boost, Vocal, EDM, Rock, Movie, Acoustic, Classical) — applied to previews and playback
 - **Waveform visualizer** — hardware-accelerated canvas, 0% CPU when paused
 - **Hardware audio output selector** — route audio to a specific DAC, headphones, or speaker
@@ -77,6 +84,8 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 - **Full-screen video player** with Netflix-style queue drawer
 
 ### 🎨 Interface
+- **Welcome onboarding modal** — first-launch guide explaining core features, keyboard shortcuts, and cookie safety advisories
+- **Paginated activity list** — smooth page navigation through large download histories with zero DOM lag
 - **4 curated themes** — Signature (plum/rose), Light (crisp high-contrast), Frost (refined dark), OLED (pure black)
 - **IDE-style zoom** — `Ctrl+=`, `Ctrl+-`, `Ctrl+0`, persisted across sessions
 - **Collapsible sidebar** with a clickable "Now Playing" pill
@@ -84,9 +93,11 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 
 ### 🔒 Privacy & Engineering
 - **Zero telemetry** — no analytics, no crash reporting, no pingbacks, no third-party proxies
+- **In-app yt-dlp engine self-updater** — check and update the yt-dlp sidecar binary directly from Settings with automated SHA-256 fingerprint synchronization
+- **Signed app auto-updater** — native auto-update engine powered by `tauri-plugin-updater` with Minisign Ed25519 cryptographic signatures
 - **Windows Job Objects** — every child process (`yt-dlp`, `ffmpeg`) is bound to a job object with `KILL_ON_JOB_CLOSE`. Force-quitting Devizee or crashing never leaves zombie processes
 - **Atomic `.part` staging** — files rename only after size + duration sanity checks pass
-- **SQLite WAL mode** with throttled writes — no UI stalls during multi-download bursts
+- **SQLite WAL mode & checkpointing** — WAL mode with throttled writes and proactive WAL checkpointing on startup and shutdown to prevent transaction loss
 - **Corruption recovery** — if the database is corrupted by a power cut, Devizee quarantines it and starts fresh rather than refusing to launch
 - **Sidecar fingerprint verification** — SHA-256 hashing of yt-dlp and ffmpeg with tamper detection
 - **Cookie authentication** for age-restricted videos via browser cookies (Chrome, Edge, Firefox, Brave, Opera, Vivaldi) — read locally, never sent to any Devizee server
@@ -158,7 +169,7 @@ Read our full [PRIVACY.md](PRIVACY.md) and see [SECURITY.md](SECURITY.md) for th
 ### Devizee Lite (current line)
 - ✅ v0.3.0 — Stability, auto-retry, network recovery, duplicate detection
 - ✅ v0.4.0 — Sleep/watchdog detection, Refresh URL, DB corruption recovery, GitHub issue templates
-- ✅ v0.5.0 — Frameless integrated titlebar, active download close-protection dialog, media player UX polish, and compliance documentation
+- ✅ v0.5.0 — Subtitle download + in-player tracks, in-app yt-dlp engine self-updater, SQLite WAL checkpointing, welcome onboarding modal, MAX_PATH dynamic clamp, paginated activity list, signed auto-updater (tauri-plugin-updater), frameless integrated titlebar, and active download close-protection dialog
 - 🔄 v0.5.x — Universal browser companion extension and ecosystem integration
 
 ### Devizee AIO — All-In-One Download Manager (separate product, in development)

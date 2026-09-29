@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { RefObject } from "react";
 import {
     AlertCircle,
@@ -227,7 +227,35 @@ export function VideoCard({
 
     const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
     const [customSubtitleName, setCustomSubtitleName] = useState<string | null>(null);
-    const [includeSubtitles, setIncludeSubtitles] = useState(true);
+    // Subtitle availability detection from yt-dlp metadata
+    const hasSubtitles = videoInfo.has_subtitles ?? (videoInfo.subtitle_languages && videoInfo.subtitle_languages.length > 0);
+    const [includeSubtitles, setIncludeSubtitles] = useState<boolean>(() => Boolean(hasSubtitles));
+
+    useEffect(() => {
+        if (videoInfo.has_subtitles !== undefined) {
+            setIncludeSubtitles(Boolean(videoInfo.has_subtitles));
+        }
+    }, [videoInfo.id, videoInfo.has_subtitles]);
+
+    const handleRefreshStream = async () => {
+        setIsRefreshingStream(true);
+        setVideoPlaybackError(false);
+        try {
+            if (isAudioPreviewing) {
+                toggleAudioPreview(videoInfo.url, videoInfo.id, true);
+            } else {
+                await handlePlayVideo({
+                    id: videoInfo.id,
+                    url: videoInfo.url,
+                    title: videoInfo.title,
+                    thumbnail: videoInfo.thumbnail,
+                    duration_string: videoInfo.duration_string || "",
+                }, true);
+            }
+        } finally {
+            setTimeout(() => setIsRefreshingStream(false), 600);
+        }
+    };
 
     const handleAddSubtitleTrack = async () => {
         try {
@@ -356,22 +384,9 @@ export function VideoCard({
                                                 <p className="text-secondary text-[11px] max-w-xs mt-1">Platform tokens (TikTok/Instagram) expire quickly. Click below to refresh the streaming link.</p>
                                                 <button
                                                     type="button"
-                                                    onClick={async () => {
-                                                        setVideoPlaybackError(false);
-                                                        setIsRefreshingStream(true);
-                                                        try {
-                                                            await handlePlayVideo({
-                                                                id: videoInfo.id,
-                                                                url: videoInfo.url,
-                                                                title: videoInfo.title,
-                                                                thumbnail: videoInfo.thumbnail,
-                                                                duration_string: videoInfo.duration_string || "",
-                                                            }, true);
-                                                        } finally {
-                                                            setIsRefreshingStream(false);
-                                                        }
-                                                    }}
+                                                    onClick={handleRefreshStream}
                                                     className="mt-3 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                                                    title="Refresh video stream link"
                                                 >
                                                     <RotateCw size={13} className={isRefreshingStream ? "animate-spin" : ""} />
                                                     <span>Refresh Video Link</span>
@@ -494,32 +509,6 @@ export function VideoCard({
                                     )}
                                 </button>
 
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        setIsRefreshingStream(true);
-                                        setVideoPlaybackError(false);
-                                        try {
-                                            if (isAudioPreviewing) {
-                                                toggleAudioPreview(videoInfo.url, videoInfo.id, true);
-                                            } else {
-                                                await handlePlayVideo({
-                                                    id: videoInfo.id,
-                                                    url: videoInfo.url,
-                                                    title: videoInfo.title,
-                                                    thumbnail: videoInfo.thumbnail,
-                                                    duration_string: videoInfo.duration_string || "",
-                                                }, true);
-                                            }
-                                        } finally {
-                                            setTimeout(() => setIsRefreshingStream(false), 600);
-                                        }
-                                    }}
-                                    className="p-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 transition-colors shadow-2xs cursor-pointer"
-                                    title="Refresh media stream link if expired or failed"
-                                >
-                                    <RotateCw size={13} className={isRefreshingStream ? "animate-spin text-accent" : ""} />
-                                </button>
 
                                 <div
                                     className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-subtle/50 text-accent text-[11px] font-medium border border-accent/20 select-none shadow-2xs"
@@ -629,9 +618,22 @@ export function VideoCard({
                             <h4 className="text-body-sm font-bold text-primary">Configure & Go</h4>
                             <p className="text-[11px] text-tertiary">Select media type, quality tier & destination</p>
                         </div>
-                        <span className="text-[11px] font-mono font-medium text-tertiary px-2 py-0.5 rounded bg-surface-2 border border-border-subtle">
-                            {videoInfo.duration_string}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            {videoInfo.duration_string && (
+                                <span className="text-[11px] font-mono font-medium text-tertiary px-2 py-0.5 rounded bg-surface-2 border border-border-subtle" title="Total video duration">
+                                    {videoInfo.duration_string}
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleRefreshStream}
+                                className="px-2 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 text-[11px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                title="Refresh media stream link if video or audio preview link has expired"
+                            >
+                                <RotateCw size={11} className={isRefreshingStream ? "animate-spin text-accent" : "text-tertiary"} />
+                                <span>Refresh Link</span>
+                            </button>
+                        </div>
                     </div>
 
                     {/* Section 1: Video Resolutions */}
@@ -994,17 +996,31 @@ export function VideoCard({
                         {!isAudioSelected && (
                             <button
                                 type="button"
-                                onClick={() => setIncludeSubtitles(!includeSubtitles)}
-                                disabled={isStartingDownload}
-                                className={`px-3 py-3 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 flex items-center gap-1.5 text-xs font-semibold ${
-                                    includeSubtitles
-                                        ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/20"
-                                        : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-tertiary"
+                                onClick={() => {
+                                    if (hasSubtitles !== false) {
+                                        setIncludeSubtitles(!includeSubtitles);
+                                    }
+                                }}
+                                disabled={isStartingDownload || hasSubtitles === false}
+                                className={`px-3 py-3 rounded-xl border transition-all shadow-2xs shrink-0 flex items-center gap-1.5 text-xs font-semibold ${
+                                    hasSubtitles === false
+                                        ? "bg-surface-2/60 border-border-subtle/50 text-tertiary/60 opacity-60 cursor-not-allowed"
+                                        : includeSubtitles
+                                            ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/20 cursor-pointer"
+                                            : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-tertiary cursor-pointer"
                                 }`}
-                                title={includeSubtitles ? "Subtitles will be downloaded and embedded into the video" : "Subtitles disabled"}
+                                title={
+                                    hasSubtitles === false
+                                        ? "No subtitles or captions available for this video on the source platform"
+                                        : includeSubtitles
+                                            ? `Subtitles enabled (${videoInfo.subtitle_languages?.length ? `${videoInfo.subtitle_languages.length} languages detected` : "platform captions"}). Click to disable.`
+                                            : "Subtitles disabled. Click to embed subtitles into downloaded video."
+                                }
                             >
                                 <Subtitles size={15} />
-                                <span className="hidden sm:inline">{includeSubtitles ? "Subs: On" : "Subs: Off"}</span>
+                                <span className="hidden sm:inline">
+                                    {hasSubtitles === false ? "No Subs" : includeSubtitles ? "Subs: On" : "Subs: Off"}
+                                </span>
                             </button>
                         )}
 
@@ -1016,7 +1032,7 @@ export function VideoCard({
                                 ? "bg-accent text-white border-accent"
                                 : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-secondary hover:text-accent"
                                 }`}
-                            title="Schedule Download (Night Mode / Off-Peak Queue)"
+                            title={activeScheduleTime ? `Download scheduled for ${activeScheduleTime}. Click to edit schedule.` : "Schedule Download (Night Mode / Off-Peak Queue)"}
                         >
                             <Moon size={16} />
                         </button>

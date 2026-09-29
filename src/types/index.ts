@@ -20,6 +20,8 @@ export type VideoInfo = {
     video_formats: FormatOption[];
     audio_formats: FormatOption[];
     formats: FormatOption[];
+    has_subtitles?: boolean;
+    subtitle_languages?: string[];
 };
 
 export type PlaylistEntry = {

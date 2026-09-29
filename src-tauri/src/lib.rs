@@ -41,6 +41,10 @@ pub struct VideoInfo {
     pub video_formats: Vec<FormatOption>,
     pub audio_formats: Vec<FormatOption>,
     pub formats: Vec<FormatOption>,
+    #[serde(default)]
+    pub has_subtitles: Option<bool>,
+    #[serde(default)]
+    pub subtitle_languages: Option<Vec<String>>,
 }
 
 /// Progress event emitted to the frontend in real time
@@ -518,6 +522,23 @@ async fn fetch_video_info(
     let mut formats = video_formats.clone();
     formats.extend(audio_formats.clone());
 
+    let mut sub_langs: Vec<String> = Vec::new();
+    if let Some(subs) = json_val.get("subtitles").and_then(|s| s.as_object()) {
+        for k in subs.keys() {
+            if !sub_langs.contains(k) {
+                sub_langs.push(k.clone());
+            }
+        }
+    }
+    if let Some(autos) = json_val.get("automatic_captions").and_then(|s| s.as_object()) {
+        for k in autos.keys() {
+            if !sub_langs.contains(k) {
+                sub_langs.push(k.clone());
+            }
+        }
+    }
+    let has_subtitles = !sub_langs.is_empty();
+
     Ok(VideoInfo {
         id,
         title,
@@ -529,6 +550,8 @@ async fn fetch_video_info(
         video_formats,
         audio_formats,
         formats,
+        has_subtitles: Some(has_subtitles),
+        subtitle_languages: Some(sub_langs),
     })
 }
 
@@ -3272,6 +3295,7 @@ fn handle_bridge_connection(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
@@ -3283,13 +3307,17 @@ pub fn run() {
                     if let Some(target) = iter.next() {
                         let _ = app.emit("open-url", target.to_string());
                     }
-                } else if arg.starts_with("streamgrab://download?url=") {
+                } else if arg.starts_with("streamgrab://download?url=") || arg.starts_with("devizee://download?url=") {
                     // F-27: hardened deep-link validation.
                     // - Reject any URL containing a null byte (truncation trick)
                     // - Reject any URL with control characters
                     // - Reject anything that isn't http/https after ONE decode pass
                     // - Cap length to prevent DoS via giant pasted URLs
-                    let raw = arg.trim_start_matches("streamgrab://download?url=");
+                    let raw = if arg.starts_with("devizee://download?url=") {
+                        arg.trim_start_matches("devizee://download?url=")
+                    } else {
+                        arg.trim_start_matches("streamgrab://download?url=")
+                    };
 
                     if raw.len() > 2048 {
                         eprintln!("[Devizee] Deep link rejected: URL exceeds 2048 chars");
