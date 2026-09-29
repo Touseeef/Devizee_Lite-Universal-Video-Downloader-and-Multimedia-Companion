@@ -279,9 +279,6 @@ fn get_ffmpeg_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     dev_candidates.into_iter().find(|path| path.exists())
 }
 
-const BROWSER_USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
-
 /// Checks if a URL belongs to known DRM-restricted subscription services
 fn is_known_drm_service(url: &str) -> bool {
     let lower = url.to_lowercase();
@@ -319,8 +316,6 @@ async fn fetch_video_info(
         "--no-warnings",
         "--force-ipv4",
         "--geo-bypass",
-        "--user-agent",
-        BROWSER_USER_AGENT,
         "--socket-timeout",
         "30",
         "--retries",
@@ -2181,8 +2176,6 @@ async fn get_audio_stream_url(
         "--no-playlist",
         "--force-ipv4",
         "--geo-bypass",
-        "--user-agent",
-        BROWSER_USER_AGENT,
         "--socket-timeout",
         "30",
         "--retries",
@@ -2224,8 +2217,6 @@ async fn get_video_stream_url(
         "--no-playlist",
         "--force-ipv4",
         "--geo-bypass",
-        "--user-agent",
-        BROWSER_USER_AGENT,
         "--socket-timeout",
         "30",
         "--retries",
@@ -2275,8 +2266,6 @@ async fn fetch_playlist_info(
         "--no-warnings",
         "--force-ipv4",
         "--geo-bypass",
-        "--user-agent",
-        BROWSER_USER_AGENT,
         "--socket-timeout",
         "30",
         "--retries",
@@ -2672,8 +2661,6 @@ async fn fetch_audio_bytes(
         "--no-colors",
         "--force-ipv4",
         "--geo-bypass",
-        "--user-agent",
-        BROWSER_USER_AGENT,
         "--socket-timeout",
         "30",
         "--retries",
@@ -3210,8 +3197,8 @@ fn handle_bridge_connection(
     // SECURITY: Block external websites from triggering downloads.
     // Browsers forbid web pages from setting chrome-extension:// or moz-extension:// Origin.
     let is_valid_extension_origin = match origin.as_deref() {
-        Some(o) => o.starts_with("chrome-extension://") || o.starts_with("moz-extension://"),
-        None => false,
+        Some(o) => o.starts_with("chrome-extension://") || o.starts_with("moz-extension://") || o == "null",
+        None => true, // Direct loopback service worker or extension call without Origin
     };
 
     let is_authenticated_token = match token_header.as_deref() {
@@ -3220,14 +3207,16 @@ fn handle_bridge_connection(
     };
 
     // If an external web page attempts cross-origin access, reject immediately with 403 Forbidden!
-    if origin.is_some() && !is_valid_extension_origin {
-        let resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nForbidden: Cross-origin web requests are blocked.";
-        let _ = stream.write_all(resp.as_bytes());
-        let _ = stream.flush();
-        return;
+    if let Some(ref o) = origin {
+        if !o.starts_with("chrome-extension://") && !o.starts_with("moz-extension://") && o != "null" {
+            let resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nForbidden: Cross-origin web requests are blocked.";
+            let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
+            return;
+        }
     }
 
-    let allowed_origin = origin.unwrap_or_else(|| "null".to_string());
+    let allowed_origin = origin.unwrap_or_else(|| "*".to_string());
     let cors_headers = format!(
         "Access-Control-Allow-Origin: {}\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-Devizee-Token\r\nConnection: close",
         allowed_origin
@@ -3245,7 +3234,7 @@ fn handle_bridge_connection(
             "status": "ok",
             "app": "Devizee Lite",
             "port": 42421,
-            "version": "0.5.0"
+            "version": "0.5.1"
         }).to_string();
         let resp = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
