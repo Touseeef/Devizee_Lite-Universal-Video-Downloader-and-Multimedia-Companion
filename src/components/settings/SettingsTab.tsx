@@ -849,8 +849,8 @@ export function SettingsTab({
                     {/* Advanced & Engine */}
                     <SettingsSection title={t("settings_advanced")} icon={<Cpu size={16} />}>
                         <SettingRow
-                            title="Browser Session Sync (All Sites)"
-                            desc="Uses your desktop browser's active login session to resolve age-restricted videos, private content, and bot verifications across YouTube, Instagram, TikTok, Twitter/X, Reddit, and more. No credentials or passwords are ever stored."
+                            title="Cookie Authentication (via browser session)"
+                            desc="Reads session cookies from your selected local browser on-demand to access age-restricted or private videos across YouTube, Instagram, TikTok, Twitter/X, and Reddit. Advisory: Platforms may flag personal accounts for automated activity if downloading frequently; consider using a secondary browser or dedicated account."
                         >
                             <select
                                 value={settings.cookiesFromBrowser || "none"}

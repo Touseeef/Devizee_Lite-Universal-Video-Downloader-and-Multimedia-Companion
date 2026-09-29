@@ -2729,14 +2729,17 @@ function detectAudioMime(arr: Uint8Array): string {
                     <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 shrink-0 mt-0.5">
                       <KeyRound size={20} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <h4 className="text-body font-semibold text-primary flex items-center gap-2">
-                        Account Sign-In or Age Verification Required
+                        Account Login Required (Cookie Authentication)
                       </h4>
                       <p className="text-body-sm text-secondary leading-relaxed">
-                        This video requires an account login, age verification, or active session cookies (YouTube age-gate, Instagram, TikTok, Twitter/X, Reddit, etc.).
-                        Devizee can securely reuse your active browser session directly on this PC — no passwords or credentials are ever requested or stored.
+                        This video requires an account login, age verification, or session cookies (YouTube age-gate, Instagram, TikTok, Twitter/X, Reddit, etc.).
+                        Devizee can read your local browser's session cookies on-demand to resolve this media.
                       </p>
+                      <div className="text-caption text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded px-2.5 py-1.5 mt-1">
+                        ⚠️ <strong>Account Safety Advisory:</strong> Using cookies from your personal account may cause services like YouTube or Instagram to flag automated activity or prompt for bot verification. Using a secondary browser or a dedicated account for downloads is recommended.
+                      </div>
                     </div>
                   </div>
                   <button
