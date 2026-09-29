@@ -69,6 +69,8 @@ export function MultimediaTab({
     isMuted,
     onVolumeChange,
     onToggleMute,
+    initialPlayRecord,
+    onClearInitialPlayRecord,
 }: {
     t: (key: TranslationKey) => string;
     history: DownloadRecord[];
@@ -86,6 +88,8 @@ export function MultimediaTab({
     isMuted: boolean;
     onVolumeChange: (v: number) => void;
     onToggleMute: () => void;
+    initialPlayRecord?: DownloadRecord | null;
+    onClearInitialPlayRecord?: () => void;
 }) {
     // Filters & view modes
     const [mediaFilter, setMediaFilter] = useState<"all" | "videos" | "audios">("all");
@@ -436,6 +440,14 @@ export function MultimediaTab({
                 });
         }
     };
+
+    // Auto-play media item when requested from Downloads tab or other screens
+    useEffect(() => {
+        if (initialPlayRecord && initialPlayRecord.file_path) {
+            playMediaItem(initialPlayRecord);
+            onClearInitialPlayRecord?.();
+        }
+    }, [initialPlayRecord]);
 
     // Flush deferred video play once the <video> element has mounted
     useEffect(() => {

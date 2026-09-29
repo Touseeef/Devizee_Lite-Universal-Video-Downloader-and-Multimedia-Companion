@@ -42,6 +42,7 @@ export const ActivityList = React.memo(function ActivityList({
     onResume,
     onCancel,
     onRefreshUrl,
+    onPlayMedia,
 }: {
     t: (key: TranslationKey) => string;
     isOnline: boolean;
@@ -63,6 +64,7 @@ export const ActivityList = React.memo(function ActivityList({
     onResume?: (record: DownloadRecord) => void;
     onCancel?: (id: string) => void;
     onRefreshUrl?: (record: DownloadRecord) => void;
+    onPlayMedia?: (record: DownloadRecord) => void;
 }) {
     const [visibleLimit, setVisibleLimit] = React.useState(50);
     const visibleRecords = React.useMemo(() => {
@@ -208,6 +210,7 @@ export const ActivityList = React.memo(function ActivityList({
                                         tOpenFile={t("open_file")}
                                         tRemoveRow={t("remove_row")}
                                         tDeleteFile={t("delete_file")}
+                                        onPlayMedia={onPlayMedia}
                                     />
                                 </div>
                             </div>

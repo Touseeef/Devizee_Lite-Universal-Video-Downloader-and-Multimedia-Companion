@@ -62,6 +62,7 @@ export function DownloadsTab({
     onPauseSelected,
     onResumeSelected,
     onRefreshUrl,
+    onPlayMedia,
 }: {
     t: (key: TranslationKey) => string;
     isOnline: boolean;
@@ -99,6 +100,7 @@ export function DownloadsTab({
     onPauseSelected?: () => void;
     onResumeSelected?: () => void;
     onRefreshUrl?: (record: DownloadRecord) => void;
+    onPlayMedia?: (record: DownloadRecord) => void;
 }) {
     // F-36: Dismissible interrupted-downloads recovery banner.
     const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -310,6 +312,7 @@ export function DownloadsTab({
                 onResume={onResumeDownload}
                 onCancel={onCancelDownload}
                 onRefreshUrl={onRefreshUrl}
+                onPlayMedia={onPlayMedia}
             />
         </div>
     );

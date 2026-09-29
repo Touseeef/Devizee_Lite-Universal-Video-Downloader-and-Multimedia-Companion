@@ -5,7 +5,7 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
-import { AlertCircle, KeyRound, ExternalLink, ShieldAlert, X, Sparkles } from "lucide-react";
+import { AlertCircle, KeyRound, ExternalLink, ShieldAlert, X, Sparkles, Globe } from "lucide-react";
 
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -50,6 +50,7 @@ import { Sidebar } from "./components/layout/Sidebar";
 import { ClipboardHud } from "./components/hud/ClipboardHud";
 import { BatchQueuePanel, type BatchItem } from "./components/downloads/BatchQueuePanel";
 import { WelcomeModal } from "./components/common/WelcomeModal";
+import { SupportedSitesModal } from "./components/common/SupportedSitesModal";
 
 
 export default function App() {
@@ -92,6 +93,9 @@ export default function App() {
       return false;
     }
   });
+
+  // Supported Sites & DRM Policy guide modal
+  const [isSupportedSitesOpen, setIsSupportedSitesOpen] = useState(false);
 
   // Playlist states
   const [playlistInfo, setPlaylistInfo] = useState<PlaylistInfo | null>(null);
@@ -223,6 +227,7 @@ export default function App() {
   const [isLoadingAudioId, setIsLoadingAudioId] = useState<string | null>(null);
   const [previewTime, setPreviewTime] = useState(0);
   const [previewDuration, setPreviewDuration] = useState(0);
+  const [multimediaTargetRecord, setMultimediaTargetRecord] = useState<DownloadRecord | null>(null);
 
   // ─── F-29: Bounded audio blob cache with URL revocation ───
   // Every preview creates a Blob + object URL from raw bytes. Without a cap
@@ -2998,15 +3003,17 @@ function detectAudioMime(arr: Uint8Array): string {
                   prev.map((b) => (b.id === id ? { ...b, format: fmt } : b))
                 )
               }
-              onPlayVideo={(item) =>
+              onPlayVideo={(item) => {
+                const ytMatch = item.url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
+                const realId = ytMatch ? ytMatch[1] : item.id;
                 handlePlayVideo({
-                  id: item.id,
+                  id: realId,
                   url: item.url,
                   title: item.title,
                   thumbnail: item.thumbnail,
                   duration_string: item.duration_string || "",
-                })
-              }
+                });
+              }}
               onPreviewAudio={toggleAudioPreview}
               previewingId={previewingId}
               isAudioElementPlaying={isAudioElementPlaying}
@@ -3073,6 +3080,29 @@ function detectAudioMime(arr: Uint8Array): string {
               onClear={() => setActivePlaylistBatch(null)}
             />
           )}
+
+          {/* Supported Platforms Discovery / Quick Guide */}
+          {!videoInfo && !searchResults && batchQueueItems.length === 0 && !activePlaylistBatch && !fetchError && !isFetching && (
+            <div className="p-5 rounded-2xl bg-surface-1/60 border border-border-subtle/80 flex flex-col md:flex-row items-center justify-between gap-4 mt-2 animate-in fade-in duration-300">
+              <div className="space-y-1 text-center md:text-left">
+                <div className="flex items-center justify-center md:justify-start gap-2">
+                  <span className="text-body-sm font-semibold text-primary">Supported Streaming & Social Platforms</span>
+                  <span className="px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 text-accent text-[11px] font-bold">1,000+ Sites</span>
+                </div>
+                <p className="text-caption text-secondary">
+                  YouTube, TikTok, Instagram, Twitter / X, Twitch, SoundCloud, Vimeo, Reddit, and hundreds more.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSupportedSitesOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-semibold text-primary transition-all flex items-center gap-2 cursor-pointer shrink-0 shadow-2xs hover:scale-[1.02]"
+              >
+                <Globe size={14} className="text-accent" />
+                <span>View Supported Sites & DRM Policy</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ===================== TAB 2: DOWNLOADS ===================== */}
@@ -3116,6 +3146,10 @@ function detectAudioMime(arr: Uint8Array): string {
                 errorCode: record.error_code,
               });
             }}
+            onPlayMedia={(record) => {
+              setMultimediaTargetRecord(record);
+              setActiveTab("multimedia");
+            }}
           />
         </div>
 
@@ -3138,6 +3172,8 @@ function detectAudioMime(arr: Uint8Array): string {
             isMuted={isMuted}
             onVolumeChange={handleVolumeChange}
             onToggleMute={toggleMute}
+            initialPlayRecord={multimediaTargetRecord}
+            onClearInitialPlayRecord={() => setMultimediaTargetRecord(null)}
           />
         </div>
 
@@ -3159,6 +3195,7 @@ function detectAudioMime(arr: Uint8Array): string {
             handleToggleAutostart={handleToggleAutostart}
             handleBrowseFolder={handleBrowseFolder}
             openFolder={openFolder}
+            onOpenSupportedSites={() => setIsSupportedSitesOpen(true)}
           />
         </div>
 
@@ -3223,6 +3260,11 @@ function detectAudioMime(arr: Uint8Array): string {
       <WelcomeModal
         isOpen={isWelcomeOpen}
         onClose={() => setIsWelcomeOpen(false)}
+      />
+
+      <SupportedSitesModal
+        isOpen={isSupportedSitesOpen}
+        onClose={() => setIsSupportedSitesOpen(false)}
       />
     </AppShell>
   );

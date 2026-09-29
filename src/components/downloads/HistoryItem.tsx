@@ -48,6 +48,7 @@ export const HistoryItem = React.memo(function HistoryItem({
     tOpenFile,
     tRemoveRow,
     tDeleteFile,
+    onPlayMedia,
 }: {
     record: DownloadRecord;
     isOnline: boolean;
@@ -64,6 +65,7 @@ export const HistoryItem = React.memo(function HistoryItem({
     tOpenFile: string;
     tRemoveRow: string;
     tDeleteFile: string;
+    onPlayMedia?: (record: DownloadRecord) => void;
 }) {
     const display = STATUS_DISPLAY[record.status] || STATUS_DISPLAY.error;
     const [menuOpen, setMenuOpen] = useState(false);
@@ -119,26 +121,44 @@ export const HistoryItem = React.memo(function HistoryItem({
             title={record.status === "completed" ? "Double-click to open file" : undefined}
         >
             {/* Media Thumbnail */}
-            <div className="w-16 aspect-video rounded-md overflow-hidden bg-surface-2 shrink-0 relative flex items-center justify-center border border-border-subtle/60">
+            <div
+                onClick={(e) => {
+                    if (record.status === "completed" && onPlayMedia) {
+                        e.stopPropagation();
+                        onPlayMedia(record);
+                    }
+                }}
+                className={`w-16 aspect-video rounded-md overflow-hidden bg-surface-2 shrink-0 relative flex items-center justify-center border border-border-subtle/60 transition-all ${record.status === "completed" ? "cursor-pointer group/thumb hover:border-accent hover:shadow-xs" : ""}`}
+                title={record.status === "completed" ? "Play in Multimedia Player" : undefined}
+            >
                 {record.status === "error" ? (
                     <div className="w-full h-full flex items-center justify-center bg-status-danger-subtle text-status-danger">
                         <AlertCircle size={18} />
                     </div>
                 ) : ytId ? (
-                    <img
-                        src={`https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                        }}
-                    />
+                    <>
+                        <img
+                            src={`https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`}
+                            alt=""
+                            className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-200"
+                            onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                            }}
+                        />
+                        {record.status === "completed" && (
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center transition-opacity">
+                                <Play size={15} fill="white" className="text-white ml-0.5" />
+                            </div>
+                        )}
+                    </>
                 ) : isAudio ? (
-                    <div className="w-full h-full flex items-center justify-center bg-accent-subtle/40 text-accent">
-                        <Music size={18} />
+                    <div className="w-full h-full flex items-center justify-center bg-accent-subtle/40 text-accent group-hover/thumb:bg-accent group-hover/thumb:text-white transition-colors">
+                        {record.status === "completed" ? <Play size={16} fill="currentColor" /> : <Music size={18} />}
                     </div>
                 ) : (
-                    <PlayCircle size={18} className="opacity-40 text-tertiary" />
+                    <div className="w-full h-full flex items-center justify-center text-tertiary group-hover/thumb:text-accent transition-colors">
+                        <PlayCircle size={18} />
+                    </div>
                 )}
             </div>
 

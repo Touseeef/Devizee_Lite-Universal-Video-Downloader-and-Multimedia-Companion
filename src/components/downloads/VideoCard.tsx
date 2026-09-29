@@ -369,9 +369,10 @@ export function VideoCard({
                             }
                         }}
                         className="aspect-video rounded-xl overflow-hidden bg-black shrink-0 relative shadow-sm group border border-border-subtle/60"
+                        style={{ isolation: "isolate", transform: "translateZ(0)" }}
                     >
                         {activeVideoPlaying ? (
-                            <div className="w-full h-full relative flex items-center justify-center bg-black">
+                            <div className="w-full h-full relative flex items-center justify-center bg-black rounded-xl overflow-hidden" style={{ isolation: "isolate" }}>
                                 {isVideoLoading ? (
                                     <div className="flex flex-col items-center gap-2 text-white text-caption">
                                         <Loader2 size={24} className="animate-spin text-accent" />
@@ -396,7 +397,7 @@ export function VideoCard({
                                                     transitionPlayback({ type: "video", id: videoInfo.id, state: "paused" });
                                                 }
                                             }}
-                                            className="w-full h-full object-contain"
+                                            className="w-full h-full object-contain rounded-xl overflow-hidden"
                                         >
                                             {customSubtitleUrl && (
                                                 <track
@@ -409,42 +410,73 @@ export function VideoCard({
                                             )}
                                         </video>
                                         {videoPlaybackError && (
-                                            <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-fast">
-                                                <AlertCircle size={26} className="text-status-warning mb-2" />
-                                                <p className="text-white text-caption font-semibold">Video Stream Expired or Protected</p>
-                                                <p className="text-secondary text-[11px] max-w-xs mt-1">Platform tokens (TikTok/Instagram) expire quickly. Click below to refresh the streaming link.</p>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleRefreshStream}
-                                                    className="mt-3 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                                                    title="Refresh video stream link"
-                                                >
-                                                    <RotateCw size={13} className={isRefreshingStream ? "animate-spin" : ""} />
-                                                    <span>Refresh Video Link</span>
-                                                </button>
+                                            <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-fast rounded-xl overflow-hidden">
+                                                <AlertCircle size={24} className="text-status-warning mb-1.5" />
+                                                <p className="text-white text-caption font-semibold">Video Stream Token Expired or Protected</p>
+                                                <p className="text-secondary text-[11px] max-w-xs mt-1">Platform tokens (TikTok/Instagram) are protected. You can refresh, preview audio, or download the full media.</p>
+                                                <div className="flex items-center gap-2 mt-3 flex-wrap justify-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRefreshStream}
+                                                        className="px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                                                        title="Refresh video stream link"
+                                                    >
+                                                        <RotateCw size={12} className={isRefreshingStream ? "animate-spin" : ""} />
+                                                        <span>Refresh Link</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleAudioPreview(videoInfo.url, videoInfo.id)}
+                                                        className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                        title="Preview audio directly without video token limitations"
+                                                    >
+                                                        <Volume2 size={12} className="text-accent" />
+                                                        <span>Audio Preview</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={onDownloadClick}
+                                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                                                        title="Download video to watch in Multimedia Player"
+                                                    >
+                                                        <Download size={12} />
+                                                        <span>Download</span>
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </>
                                 ) : (
-                                    /* Interactive YouTube Player Perfectly Centered */
-                                    <div className="w-full h-full relative overflow-hidden bg-black flex items-center justify-center group/yt">
-                                        <iframe
-                                            ref={iframeRef}
-                                            src={`https://www.youtube.com/embed/${videoInfo.id}?enablejsapi=1&autoplay=1&rel=0&modestbranding=1&playsinline=1&controls=1`}
-                                            title={videoInfo.title}
-                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                                            allowFullScreen
-                                            onLoad={() => {
-                                                const effective = isMuted ? 0 : volume;
-                                                sendIframeCommand("setVolume", [Math.round(effective * 100)]);
-                                                if (isMuted || effective === 0) {
-                                                    sendIframeCommand("mute");
-                                                } else {
-                                                    sendIframeCommand("unMute");
-                                                }
-                                            }}
-                                            className="w-full h-full border-0 aspect-video object-contain"
-                                        />
+                                    /* Interactive YouTube Player Perfectly Centered & Clipped */
+                                    <div className="w-full h-full relative overflow-hidden rounded-xl bg-black flex items-center justify-center group/yt" style={{ isolation: "isolate" }}>
+                                        {(() => {
+                                            const ytMatch = videoInfo.url?.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/);
+                                            const cleanId = ytMatch ? ytMatch[1] : (videoInfo.id && /^[\w-]{11}$/.test(videoInfo.id) ? videoInfo.id : null);
+                                            return cleanId ? (
+                                                <iframe
+                                                    ref={iframeRef}
+                                                    src={`https://www.youtube-nocookie.com/embed/${cleanId}?enablejsapi=1&autoplay=1&rel=0&modestbranding=1&playsinline=1&controls=1`}
+                                                    title={videoInfo.title}
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                                                    allowFullScreen
+                                                    onLoad={() => {
+                                                        const effective = isMuted ? 0 : volume;
+                                                        sendIframeCommand("setVolume", [Math.round(effective * 100)]);
+                                                        if (isMuted || effective === 0) {
+                                                            sendIframeCommand("mute");
+                                                        } else {
+                                                            sendIframeCommand("unMute");
+                                                        }
+                                                    }}
+                                                    className="w-full h-full border-0 aspect-video object-contain rounded-xl overflow-hidden"
+                                                />
+                                            ) : (
+                                                <div className="flex flex-col items-center justify-center p-4 text-center text-secondary text-caption">
+                                                    <AlertCircle size={22} className="text-status-warning mb-2" />
+                                                    <span>Direct preview unavailable. Use download button to fetch media.</span>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
 

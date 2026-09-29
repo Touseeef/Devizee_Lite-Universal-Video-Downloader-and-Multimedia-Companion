@@ -294,6 +294,27 @@ fn is_known_drm_service(url: &str) -> bool {
         || lower.contains("spotify.com")
 }
 
+/// Normalizes YouTube Mix links (list=RD...) and tracking query parameters so yt-dlp metadata extraction never fails
+fn sanitize_media_url_for_metadata(url: &str) -> String {
+    let trimmed = url.trim();
+    if (trimmed.contains("youtube.com") || trimmed.contains("youtu.be")) && trimmed.contains("list=RD") {
+        if let Some(pos) = trimmed.find("v=") {
+            let rest = &trimmed[pos + 2..];
+            let vid = rest.split('&').next().unwrap_or(rest);
+            if vid.len() == 11 {
+                return format!("https://www.youtube.com/watch?v={}", vid);
+            }
+        } else if let Some(pos) = trimmed.find("youtu.be/") {
+            let rest = &trimmed[pos + 9..];
+            let vid = rest.split('?').next().unwrap_or(rest).split('&').next().unwrap_or(rest);
+            if vid.len() == 11 {
+                return format!("https://www.youtube.com/watch?v={}", vid);
+            }
+        }
+    }
+    trimmed.to_string()
+}
+
 /// Tauri command to inspect any URL and extract metadata & format tiers
 #[tauri::command]
 async fn fetch_video_info(
@@ -306,6 +327,7 @@ async fn fetch_video_info(
         return Err("DRM_PROTECTED: This platform uses hardware-level DRM encryption (Widevine/PlayReady) and cannot be downloaded.".to_string());
     }
 
+    let target_url = sanitize_media_url_for_metadata(&url);
     let yt_dlp_path = get_yt_dlp_path(&app)?;
 
     let mut cmd = Command::new(&yt_dlp_path);
@@ -333,7 +355,7 @@ async fn fetch_video_info(
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
     }
-    cmd.arg(&url);
+    cmd.arg(&target_url);
 
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
@@ -2228,7 +2250,8 @@ async fn get_video_stream_url(
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
     }
-    cmd.arg(&url);
+    let target_url = sanitize_media_url_for_metadata(&url);
+    cmd.arg(&target_url);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 

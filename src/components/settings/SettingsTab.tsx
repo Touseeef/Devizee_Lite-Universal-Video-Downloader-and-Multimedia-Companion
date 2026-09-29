@@ -7,6 +7,7 @@ import {
     Download,
     ExternalLink,
     FastForward,
+    Globe,
     Loader2,
     RefreshCw,
     Shield,
@@ -63,6 +64,7 @@ export function SettingsTab({
     handleToggleAutostart,
     handleBrowseFolder,
     openFolder,
+    onOpenSupportedSites,
 }: {
     t: (key: TranslationKey) => string;
     settings: any;
@@ -89,6 +91,7 @@ export function SettingsTab({
             | "tempFolder"
     ) => void;
     openFolder: (path?: string | null) => void;
+    onOpenSupportedSites?: () => void;
 }) {
     const [activeSection, setActiveSection] = useState<SettingsTabId>("general");
     const [eqBands, setEqBands] = useState<number[]>([...currentEqGains]);
@@ -973,6 +976,16 @@ export function SettingsTab({
                                     <span>GitHub Repo</span>
                                     <ExternalLink size={13} />
                                 </a>
+                                {onOpenSupportedSites && (
+                                    <button
+                                        type="button"
+                                        onClick={onOpenSupportedSites}
+                                        className="px-3 py-2 rounded-xl bg-accent hover:bg-accent-hover text-white text-caption font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs hover:scale-[1.02]"
+                                    >
+                                        <Globe size={13} />
+                                        <span>Supported Sites & DRM</span>
+                                    </button>
+                                )}
                                 <a
                                     href="https://github.com/Touseeef/devizee-lite-universal-video-downloader/issues/new?template=bug.md"
                                     target="_blank"
