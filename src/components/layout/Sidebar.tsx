@@ -4,6 +4,7 @@ import {
     Download,
     Film,
     Gauge,
+    HelpCircle,
     LayoutDashboard,
     PanelLeftClose,
     PanelLeftOpen,
@@ -23,6 +24,7 @@ import type { TranslationKey } from "../../lib/i18n";
 export function Sidebar({
     collapsed = false,
     onToggleCollapse,
+    onOpenWelcome,
     activeTab,
     setActiveTab,
     onScrollToTop,
@@ -64,6 +66,7 @@ export function Sidebar({
     playSource?: PlaySource;
     previewingId?: string | null;
     t?: (key: TranslationKey) => string;
+    onOpenWelcome?: () => void;
 }) {
     const pillVisible = nowPlaying.type !== "none";
     const pillPlaying = pillVisible && nowPlaying.state === "playing";
@@ -105,16 +108,30 @@ export function Sidebar({
                         </div>
                     )}
                 </div>
-                {onToggleCollapse && (
-                    <button
-                        type="button"
-                        onClick={onToggleCollapse}
-                        className="p-1 rounded-md text-tertiary hover:text-primary hover:bg-surface-2 transition-colors cursor-pointer shrink-0"
-                        title={collapsed ? "Expand Sidebar" : "Collapse to Icons Only"}
-                    >
-                        {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-                    </button>
-                )}
+
+                <div className="flex items-center gap-1 shrink-0">
+                    {onOpenWelcome && (
+                        <button
+                            type="button"
+                            onClick={onOpenWelcome}
+                            className="p-1 rounded-md text-tertiary hover:text-accent hover:bg-surface-2 transition-colors cursor-pointer"
+                            title="Quick Start Guide & Compatibility"
+                        >
+                            <HelpCircle size={15} />
+                        </button>
+                    )}
+
+                    {onToggleCollapse && (
+                        <button
+                            type="button"
+                            onClick={onToggleCollapse}
+                            className="p-1 rounded-md text-tertiary hover:text-primary hover:bg-surface-2 transition-colors cursor-pointer"
+                            title={collapsed ? "Expand Sidebar" : "Collapse to Icons Only"}
+                        >
+                            {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Navigation (4 Curated Tabs for Devizee Lite) */}

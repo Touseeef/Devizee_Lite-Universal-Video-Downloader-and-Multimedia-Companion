@@ -1843,6 +1843,13 @@ async fn start_download(
                 );
             }
         }
+
+        // Checkpoint SQLite WAL log to keep WAL file size bounded
+        if let Some(state) = app_clone.try_state::<AppState>() {
+            if let Ok(conn) = state.db_conn.lock() {
+                db::checkpoint_db(&conn);
+            }
+        }
     });
 
     Ok(())
@@ -2679,6 +2686,186 @@ fn read_subtitle_file(path: String) -> Result<String, String> {
     Ok(format!("WEBVTT\n\n{}", converted))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineInfo {
+    pub current_version: String,
+    pub binary_path: String,
+    pub is_custom_updated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineUpdateCheck {
+    pub current_version: String,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub release_notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineUpdateResult {
+    pub success: bool,
+    pub new_version: String,
+    pub message: String,
+}
+
+#[tauri::command]
+async fn get_engine_info(app: tauri::AppHandle) -> Result<EngineInfo, String> {
+    let yt_dlp_path = get_yt_dlp_path(&app)?;
+    let mut cmd = Command::new(&yt_dlp_path);
+    cmd.arg("--version");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+
+    let output = run_command_with_timeout(cmd, 10, "yt-dlp version check")?;
+    let current_version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    let is_custom_updated = if let Ok(local_data) = app.path().app_local_data_dir() {
+        let updated_bin = local_data.join("bin").join("yt-dlp.exe");
+        yt_dlp_path == updated_bin
+    } else {
+        false
+    };
+
+    Ok(EngineInfo {
+        current_version,
+        binary_path: yt_dlp_path.to_string_lossy().to_string(),
+        is_custom_updated,
+    })
+}
+
+#[tauri::command]
+async fn check_engine_update(app: tauri::AppHandle) -> Result<EngineUpdateCheck, String> {
+    let engine_info = get_engine_info(app).await?;
+    let client = reqwest::Client::builder()
+        .user_agent("Devizee-Download-Manager")
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let res = client
+        .get("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
+        .send()
+        .await
+        .map_err(|e| format!("Network error checking yt-dlp release: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("GitHub API returned HTTP {}", res.status()));
+    }
+
+    let json: serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse release JSON: {}", e))?;
+
+    let latest_version = json["tag_name"]
+        .as_str()
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+
+    if latest_version.is_empty() {
+        return Err("Could not parse version tag from GitHub release".to_string());
+    }
+
+    let update_available = engine_info.current_version.trim() != latest_version.trim();
+    let release_notes = json["body"].as_str().map(|s| s.to_string());
+
+    Ok(EngineUpdateCheck {
+        current_version: engine_info.current_version,
+        latest_version,
+        update_available,
+        release_notes,
+    })
+}
+
+#[tauri::command]
+async fn update_engine(app: tauri::AppHandle) -> Result<EngineUpdateResult, String> {
+    let local_data = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("Failed to get app local data directory: {}", e))?;
+    let bin_dir = local_data.join("bin");
+    std::fs::create_dir_all(&bin_dir)
+        .map_err(|e| format!("Failed to create bin directory: {}", e))?;
+
+    let target_path = bin_dir.join("yt-dlp.exe");
+    let temp_path = bin_dir.join("yt-dlp.exe.download");
+
+    let client = reqwest::Client::builder()
+        .user_agent("Devizee-Download-Manager")
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let res = client
+        .get("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download yt-dlp.exe: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("GitHub download returned HTTP {}", res.status()));
+    }
+
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read download stream: {}", e))?;
+
+    if bytes.len() < 5_000_000 {
+        return Err(format!(
+            "Downloaded binary is only {} bytes, expected >5 MB. Download aborted.",
+            bytes.len()
+        ));
+    }
+
+    // Write to temporary file first
+    std::fs::write(&temp_path, &bytes)
+        .map_err(|e| format!("Failed to write downloaded binary: {}", e))?;
+
+    // Verify the downloaded binary can execute and output version
+    let mut verify_cmd = Command::new(&temp_path);
+    verify_cmd.arg("--version");
+    #[cfg(target_os = "windows")]
+    verify_cmd.creation_flags(0x08000000);
+
+    let verify_output = run_command_with_timeout(verify_cmd, 10, "verify new yt-dlp binary")
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            format!("Downloaded binary failed execution check: {}", e)
+        })?;
+
+    if !verify_output.status.success() {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err("New binary verification failed --version check".to_string());
+    }
+
+    let new_version = String::from_utf8_lossy(&verify_output.stdout)
+        .trim()
+        .to_string();
+
+    // Replace target binary atomically
+    if target_path.exists() {
+        let backup_path = bin_dir.join("yt-dlp.exe.old");
+        let _ = std::fs::remove_file(&backup_path);
+        let _ = std::fs::rename(&target_path, &backup_path);
+    }
+
+    if let Err(e) = std::fs::rename(&temp_path, &target_path) {
+        return Err(format!("Failed to move new binary into place: {}", e));
+    }
+
+    // Clean up old backup
+    let backup_path = bin_dir.join("yt-dlp.exe.old");
+    let _ = std::fs::remove_file(&backup_path);
+
+    Ok(EngineUpdateResult {
+        success: true,
+        new_version: new_version.clone(),
+        message: format!("Successfully upgraded yt-dlp engine to version {}", new_version),
+    })
+}
+
 #[tauri::command]
 fn get_history(state: tauri::State<AppState>) -> Result<Vec<db::DownloadRecord>, String> {
     // SEC-10: Handle poisoned lock gracefully
@@ -3080,6 +3267,21 @@ pub fn run() {
                 });
             }
 
+            // Periodic SQLite WAL checkpointing every 5 minutes to prevent WAL file growth
+            {
+                let app_handle_wal = app.handle().clone();
+                std::thread::spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(300));
+                        if let Some(state) = app_handle_wal.try_state::<AppState>() {
+                            if let Ok(conn) = state.db_conn.lock() {
+                                db::checkpoint_db(&conn);
+                            }
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -3103,6 +3305,9 @@ pub fn run() {
             read_subtitle_file,
             cleanup_orphan_parts,
             exit_app,
+            get_engine_info,
+            check_engine_update,
+            update_engine,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

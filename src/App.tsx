@@ -49,6 +49,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ClipboardHud } from "./components/hud/ClipboardHud";
 import { BatchQueuePanel, type BatchItem } from "./components/downloads/BatchQueuePanel";
+import { WelcomeModal } from "./components/common/WelcomeModal";
 
 
 export default function App() {
@@ -80,6 +81,15 @@ export default function App() {
     confirmVariant?: "danger" | "accent";
     onConfirm: () => void;
   } | null>(null);
+
+  // First-run onboarding guide
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState(() => {
+    try {
+      return localStorage.getItem("devizee_welcome_seen") !== "true";
+    } catch {
+      return false;
+    }
+  });
 
   // Playlist states
   const [playlistInfo, setPlaylistInfo] = useState<PlaylistInfo | null>(null);
@@ -2611,6 +2621,7 @@ function detectAudioMime(arr: Uint8Array): string {
           playSource={playSource}
           previewingId={previewingId}
           t={t}
+          onOpenWelcome={() => setIsWelcomeOpen(true)}
         />
       )}
     >
@@ -3011,6 +3022,11 @@ function detectAudioMime(arr: Uint8Array): string {
         activeCount={history.filter(h => h.status === "downloading" || h.status === "muxing" || h.status === "starting").length}
         onContinueDownloading={handleCancelCloseApp}
         onCloseApp={handleConfirmCloseApp}
+      />
+
+      <WelcomeModal
+        isOpen={isWelcomeOpen}
+        onClose={() => setIsWelcomeOpen(false)}
       />
     </AppShell>
   );

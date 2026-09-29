@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Check,
     Clock,
@@ -7,6 +7,7 @@ import {
     Download,
     ExternalLink,
     FastForward,
+    Loader2,
     RefreshCw,
     Shield,
     Sliders,
@@ -15,12 +16,12 @@ import {
     Volume2,
     VolumeX,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { SettingsSection } from "../common/SettingsSection";
 import { SettingRow, SettingToggle } from "../common/SettingRow";
 import { ThemeDropdown } from "../common/ThemeDropdown";
 import type { TranslationKey } from "../../lib/i18n";
 import { VerticalEqSlider } from "../common/VerticalEqSlider";
-
 
 import { currentEqGains, setGlobalEqualizerGains } from "../../lib/audioContext";
 
@@ -91,6 +92,59 @@ export function SettingsTab({
     const [eqBands, setEqBands] = useState<number[]>([...currentEqGains]);
     const [activePreset, setActivePreset] = useState<string>("Flat");
     const [diagCopied, setDiagCopied] = useState(false);
+
+    // Engine Core (yt-dlp) update state
+    const [engineInfo, setEngineInfo] = useState<{ current_version: string; binary_path: string; is_custom_updated: boolean } | null>(null);
+    const [engineUpdateCheck, setEngineUpdateCheck] = useState<{ current_version: string; latest_version: string; update_available: boolean } | null>(null);
+    const [isCheckingEngine, setIsCheckingEngine] = useState(false);
+    const [isUpdatingEngine, setIsUpdatingEngine] = useState(false);
+    const [engineStatusMessage, setEngineStatusMessage] = useState<string | null>(null);
+
+    const handleFetchEngineInfo = async () => {
+        try {
+            const info = await invoke<{ current_version: string; binary_path: string; is_custom_updated: boolean }>("get_engine_info");
+            setEngineInfo(info);
+        } catch (e: any) {
+            console.error("Failed to get engine info:", e);
+        }
+    };
+
+    const handleCheckEngineUpdate = async () => {
+        setIsCheckingEngine(true);
+        setEngineStatusMessage(null);
+        try {
+            const check = await invoke<{ current_version: string; latest_version: string; update_available: boolean }>("check_engine_update");
+            setEngineUpdateCheck(check);
+            if (!check.update_available) {
+                setEngineStatusMessage(`Engine is up to date (v${check.current_version})`);
+            }
+        } catch (e: any) {
+            setEngineStatusMessage(`Update check failed: ${e}`);
+        } finally {
+            setIsCheckingEngine(false);
+        }
+    };
+
+    const handleUpdateEngine = async () => {
+        setIsUpdatingEngine(true);
+        setEngineStatusMessage("Downloading latest yt-dlp binary from GitHub...");
+        try {
+            const res = await invoke<{ success: boolean; new_version: string; message: string }>("update_engine");
+            setEngineStatusMessage(res.message);
+            setEngineUpdateCheck(null);
+            await handleFetchEngineInfo();
+        } catch (e: any) {
+            setEngineStatusMessage(`Upgrade failed: ${e}`);
+        } finally {
+            setIsUpdatingEngine(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeSection === "advanced") {
+            handleFetchEngineInfo();
+        }
+    }, [activeSection]);
 
     const tabs: { id: SettingsTabId; label: string; icon: any }[] = [
         { id: "general", label: "General", icon: Sliders },
@@ -726,19 +780,60 @@ export function SettingsTab({
                             />
                         </SettingRow>
 
-                        <SettingRow title="yt-dlp Engine Status" desc="Active core extraction & muxing binary">
-                            <div className="flex items-center gap-2">
-                                <span className="text-caption font-mono bg-surface-2 px-2 py-0.5 rounded text-secondary">
-                                    2026.08.19
+                        <SettingRow
+                            title="yt-dlp Engine Status"
+                            desc="Active core extraction & muxing binary. YouTube changes their player frequently — keep this updated to maintain 100% download reliability."
+                        >
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                <span className="text-caption font-mono bg-surface-2 px-2.5 py-1 rounded-md text-primary font-bold border border-border-subtle shrink-0">
+                                    {engineInfo?.current_version ? `v${engineInfo.current_version}` : "yt-dlp Core"}
+                                    {engineInfo?.is_custom_updated && (
+                                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] bg-accent/20 text-accent uppercase font-sans">
+                                            User Updated
+                                        </span>
+                                    )}
                                 </span>
-                                <button
-                                    onClick={() => alert("yt-dlp engine is currently up to date.")}
-                                    className="px-2.5 py-1 rounded-md bg-surface-2 hover:bg-surface-3 text-caption font-semibold flex items-center gap-1 text-accent border border-border-subtle cursor-pointer"
-                                >
-                                    <RefreshCw size={12} /> Check Update
-                                </button>
+
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <button
+                                        type="button"
+                                        disabled={isCheckingEngine || isUpdatingEngine}
+                                        onClick={handleCheckEngineUpdate}
+                                        className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold flex items-center gap-1.5 text-accent border border-border-subtle cursor-pointer disabled:opacity-50 transition-colors"
+                                    >
+                                        <RefreshCw size={13} className={isCheckingEngine ? "animate-spin" : ""} />
+                                        <span>{isCheckingEngine ? "Checking GitHub..." : "Check Engine Update"}</span>
+                                    </button>
+
+                                    {engineUpdateCheck?.update_available && (
+                                        <button
+                                            type="button"
+                                            disabled={isUpdatingEngine}
+                                            onClick={handleUpdateEngine}
+                                            className="px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50 transition-all animate-pulse"
+                                        >
+                                            {isUpdatingEngine ? (
+                                                <Loader2 size={13} className="animate-spin" />
+                                            ) : (
+                                                <Download size={13} />
+                                            )}
+                                            <span>
+                                                {isUpdatingEngine
+                                                    ? "Updating..."
+                                                    : `Upgrade to v${engineUpdateCheck.latest_version}`}
+                                            </span>
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </SettingRow>
+
+                        {engineStatusMessage && (
+                            <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle text-caption flex items-center gap-2 text-secondary animate-in fade-in">
+                                <Sparkles size={14} className="text-accent shrink-0" />
+                                <span>{engineStatusMessage}</span>
+                            </div>
+                        )}
                     </SettingsSection>
                 </div>
             )}

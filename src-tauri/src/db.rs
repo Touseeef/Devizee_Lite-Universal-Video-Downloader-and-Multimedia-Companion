@@ -49,6 +49,10 @@ fn open_and_validate(path: &std::path::Path) -> Result<Connection> {
     }
 }
 
+pub fn checkpoint_db(conn: &Connection) {
+    let _ = conn.execute("PRAGMA wal_checkpoint(PASSIVE)", []);
+}
+
 pub fn init_db(app: &AppHandle) -> Result<Connection> {
     let app_dir = app
         .path()
