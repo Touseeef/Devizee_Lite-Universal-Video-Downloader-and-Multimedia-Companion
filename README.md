@@ -21,7 +21,7 @@ Built with Tauri v2, Rust, React, and powered by `yt-dlp` + `ffmpeg`.
 
 Devizee Lite is a **native Windows desktop app** that downloads videos and audio from YouTube, TikTok, Instagram, Twitter/X, Facebook, Twitch, and 1,000+ other sites — with a modern UI, an 8-band equalizer, a built-in media player, and a **zero-telemetry, zero-ads, zero-nonsense** approach.
 
-It is **not** Electron. It is a 40 MB installer that starts in under a second and does exactly what it says. It ships with a **companion browser extension** that sends any video straight to the desktop app with one click.
+It is **not** Electron. It is a ~60 MB installer (which bundles the full ffmpeg and yt-dlp engines) that starts in under a second and does exactly what it says. It ships with a **companion browser extension** that sends any video straight to the desktop app with one click.
 
 ---
 
@@ -35,7 +35,7 @@ Most download tools force a trade-off: pay for IDM, tolerate adware-adjacent "fr
 | **Open source** | ✅ MIT | ❌ | ❌ | ✅ | ✅ |
 | **Zero telemetry** | ✅ | ❌ | ❌ | ✅ | Partial |
 | **Ads / upsells** | None | Nag screens | Upsell banners | N/A | None |
-| **Installer size** | ~40 MB | ~200 MB | ~180 MB | Python + deps | Java runtime |
+| **Installer size** | ~60 MB | ~200 MB | ~180 MB | Python + deps | Java runtime |
 | **Video sites** | 1,000+ (via yt-dlp) | Limited | YouTube / Vimeo | 1,000+ | 300+ |
 | **Audio extraction** | MP3 / M4A / FLAC / WAV / Opus | ❌ | MP3 / M4A | ✅ | ✅ |
 | **8-band hardware EQ** | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -44,7 +44,7 @@ Most download tools force a trade-off: pay for IDM, tolerate adware-adjacent "fr
 | **Batch playlists** | ✅ with per-track formats | Basic | ✅ (paid) | ✅ CLI | ✅ |
 | **"Already downloaded" awareness** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Windows Job Object sandboxing** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Browser extension** | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Browser extension** | ✅ (Chromium) | ✅ | ✅ | ❌ | ✅ |
 | **Platform** | Windows 10/11 | Windows | Win/Mac/Linux | All | All (Java) |
 | **Updated** | Active | Slow | Active | Weekly | Active |
 
@@ -52,7 +52,7 @@ Most download tools force a trade-off: pay for IDM, tolerate adware-adjacent "fr
 - Windows-only (macOS/Linux support is not planned for Lite; a future AIO release may add it)
 - Installer is unsigned — Windows SmartScreen will warn on first run (click "More info" → "Run anyway")
 - No BitTorrent support yet (planned for Devizee AIO)
-- Companion browser extension is in public preview for Chrome, Edge, Brave, and Firefox — see [devizee-browser-extension](https://github.com/Touseeef/devizee-browser-extension)
+- Companion browser extension is in public preview for Chromium browsers (Chrome, Edge, Brave, Opera, Vivaldi) — see [devizee-browser-extension](https://github.com/Touseeef/devizee-browser-extension). Firefox support is planned for v0.6.0.
 
 See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 
@@ -73,7 +73,7 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 - **Auto-retry** for transient failures — silent, invisible to the user
 - **Refresh URL** for expired download tokens — paste a fresh link, resume from the existing `.part` file
 - **Interrupted download recovery** — resume after a crash, sleep, or forced shutdown
-- **Browser companion extension** — send videos from Chrome, Edge, Brave, or Firefox straight to Devizee with one click ([repo](https://github.com/Touseeef/devizee-browser-extension))
+- **Browser companion extension** — send videos from Chrome, Edge, Brave, Opera, or Vivaldi straight to Devizee with one click ([repo](https://github.com/Touseeef/devizee-browser-extension))
 
 ### 🎵 Media & Playback
 - **Built-in multimedia hub** — play downloaded audio and video without leaving the app
@@ -236,7 +236,7 @@ When YouTube or TikTok changes their streaming algorithms, update your core `yt-
 
 ## Browser Extension: The Fastest Way to Send Videos to Devizee
 
-A companion extension for **Chrome, Edge, Brave, and Firefox** that talks directly to your local Devizee desktop app over `127.0.0.1`. No cloud, no relay servers, no account.
+A companion extension for **Chrome, Edge, Brave, Opera, and Vivaldi** that talks directly to your local Devizee desktop app over `127.0.0.1`. No cloud, no relay servers, no account. Firefox support is planned for v0.6.0.
 
 **Available at:** [github.com/Touseeef/devizee-browser-extension](https://github.com/Touseeef/devizee-browser-extension)
 
@@ -359,7 +359,7 @@ Read our full [PRIVACY.md](PRIVACY.md) and see [SECURITY.md](SECURITY.md) for th
 - ✅ **v0.4.0** — Sleep/watchdog detection, Refresh URL, DB corruption recovery, GitHub issue templates
 - ✅ **v0.5.0** — Subtitle download + in-player tracks, in-app yt-dlp engine self-updater, SQLite WAL checkpointing, welcome onboarding modal, MAX_PATH dynamic clamp, paginated activity list, signed auto-updater, frameless titlebar, close-protection dialog
 - ✅ **v0.5.1** — Companion browser extension in public preview (crosshair sniffer, multi-media radar, theme sync), session & sign-in assistant, reliable local bridge with origin validation, UI polish
-- 🔄 **v0.6.0** — Extension store submissions, additional site integrations, and further polish
+- 🔄 **v0.6.0** — Firefox extension support (MV3 manifest adaptation), extension store submissions, additional site integrations, and further polish
 
 ### Devizee AIO — All-In-One Download Manager (separate product, in development)
 A broader-scope download manager that will add:
