@@ -424,6 +424,8 @@ export default function App() {
       // Advanced
       customFlags: "",
       logLevel: "info",
+      downloadSubtitles: true,
+      subtitleLanguages: "all",
     };
   });
 
@@ -1998,7 +2000,8 @@ function detectAudioMime(arr: Uint8Array): string {
     specificInfo?: any,
     formatLabel?: string,
     duplicateAction?: "overwrite" | "keep_both",
-    customFolder?: string
+    customFolder?: string,
+    downloadSubtitlesOverride?: boolean
   ) => {
     const info = specificInfo || videoInfo;
     if (!info) return;
@@ -2135,6 +2138,8 @@ function detectAudioMime(arr: Uint8Array): string {
         downloadSections: downloadSectionsArg,
         duplicateAction: duplicateAction || null,
         estimatedSizeBytes: estimatedSize,
+        downloadSubtitles: downloadSubtitlesOverride !== undefined ? downloadSubtitlesOverride : (settings.downloadSubtitles ?? true),
+        subtitleLanguages: settings.subtitleLanguages || "all",
       });
     } catch (e: any) {
       console.error("Start download failed:", e);
@@ -2204,6 +2209,8 @@ function detectAudioMime(arr: Uint8Array): string {
         downloadSections: null,
         duplicateAction: "overwrite",
         estimatedSizeBytes: record.file_size ?? null,
+        downloadSubtitles: settings.downloadSubtitles !== false,
+        subtitleLanguages: settings.subtitleLanguages || "all",
       });
     } catch (e: any) {
       console.error("Retry download failed:", e);
@@ -2305,6 +2312,8 @@ function detectAudioMime(arr: Uint8Array): string {
         // results in a resume, not a restart.
         duplicateAction: "overwrite",
         estimatedSizeBytes: record.file_size ?? null,
+        downloadSubtitles: settings.downloadSubtitles !== false,
+        subtitleLanguages: settings.subtitleLanguages || "all",
       });
     } catch (e: any) {
       console.error("Refresh URL failed:", e);

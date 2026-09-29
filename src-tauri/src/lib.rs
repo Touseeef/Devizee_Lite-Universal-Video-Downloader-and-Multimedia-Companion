@@ -871,6 +871,8 @@ async fn start_download(
     cookies_from_browser: Option<String>,
     filename_template: Option<String>,
     estimated_size_bytes: Option<u64>,
+    download_subtitles: Option<bool>,
+    subtitle_languages: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let yt_dlp_path = get_yt_dlp_path(&app)?;
@@ -1111,6 +1113,21 @@ async fn start_download(
             ]);
         } else {
             cmd.args(["-f", &format_id, "--merge-output-format", &ext]);
+        }
+
+        if !is_audio_only && download_subtitles.unwrap_or(false) {
+            let langs = subtitle_languages
+                .as_deref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("all");
+            cmd.args([
+                "--write-subs",
+                "--write-auto-subs",
+                "--sub-langs",
+                langs,
+                "--embed-subs",
+            ]);
         }
 
         if let Some(ref sec) = download_sections {
@@ -2563,6 +2580,45 @@ async fn read_local_file(path: String, app: tauri::AppHandle) -> Result<Vec<u8>,
 }
 
 #[tauri::command]
+fn read_subtitle_file(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() || !p.is_file() {
+        return Err("Subtitle file not found".to_string());
+    }
+
+    let ext = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext != "srt" && ext != "vtt" && ext != "txt" {
+        return Err("Unsupported subtitle format. Please select an .srt or .vtt file.".to_string());
+    }
+
+    let content = std::fs::read_to_string(p)
+        .map_err(|e| format!("Failed to read subtitle file: {}", e))?;
+
+    if content.trim_start().starts_with("WEBVTT") {
+        return Ok(content);
+    }
+
+    // Convert SubRip (.srt) timestamps to WebVTT (.vtt)
+    let converted = content
+        .lines()
+        .map(|line| {
+            if line.contains("-->") {
+                line.replace(',', ".")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    Ok(format!("WEBVTT\n\n{}", converted))
+}
+
+#[tauri::command]
 fn get_history(state: tauri::State<AppState>) -> Result<Vec<db::DownloadRecord>, String> {
     // SEC-10: Handle poisoned lock gracefully
     let conn = state
@@ -2983,6 +3039,7 @@ pub fn run() {
             fetch_audio_bytes,
             fix_legacy_paths,
             read_local_file,
+            read_subtitle_file,
             cleanup_orphan_parts,
             exit_app,
         ])

@@ -22,6 +22,7 @@ import {
     SkipBack,
     SkipForward,
     Square,
+    Subtitles,
     Trash2,
     Volume2,
     VolumeX,
@@ -34,7 +35,7 @@ import { formatFileSize } from "../../lib/format";
 import { formatDisplayBadge } from "../../lib/formatClassify";
 import { routeAudioDevice, attachEqualizerToMedia } from "../../lib/audioContext";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 function safeConvertFileSrc(filePath: string): string {
     const sanitized = filePath.replace(/#/g, "%23").replace(/\?/g, "%3F");
@@ -116,6 +117,32 @@ export function MultimediaTab({
     const [repeatMode, setRepeatMode] = useState<"off" | "all" | "one">("off");
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showNetflixDrawer, setShowNetflixDrawer] = useState(false);
+    const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
+    const [customSubtitleName, setCustomSubtitleName] = useState<string | null>(null);
+
+    const handleAddSubtitleTrack = async (e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        try {
+            const selected = await open({
+                title: "Select Subtitle File",
+                multiple: false,
+                filters: [{ name: "Subtitles", extensions: ["srt", "vtt", "txt"] }],
+            });
+            if (selected && typeof selected === "string") {
+                const vttContent = await invoke<string>("read_subtitle_file", { path: selected });
+                if (customSubtitleUrl) {
+                    try { URL.revokeObjectURL(customSubtitleUrl); } catch (_) { }
+                }
+                const blob = new Blob([vttContent], { type: "text/vtt" });
+                const blobUrl = URL.createObjectURL(blob);
+                const filename = selected.split(/[\\/]/).pop() || "Subtitles";
+                setCustomSubtitleUrl(blobUrl);
+                setCustomSubtitleName(filename);
+            }
+        } catch (err) {
+            console.error("Load subtitles error:", err);
+        }
+    };
 
     // Queue dismissals state
     const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(new Set());
@@ -629,7 +656,17 @@ export function MultimediaTab({
                                     onEnded={handleMediaEnded}
                                     className="w-full h-full object-contain cursor-pointer"
                                     onClick={togglePlayPause}
-                                />
+                                >
+                                    {customSubtitleUrl && (
+                                        <track
+                                            key={customSubtitleUrl}
+                                            src={customSubtitleUrl}
+                                            kind="subtitles"
+                                            label={customSubtitleName || "Subtitles"}
+                                            default
+                                        />
+                                    )}
+                                </video>
                             ) : activeYtId ? (
                                 <img
                                     src={`https://i.ytimg.com/vi/${activeYtId}/hqdefault.jpg`}
@@ -675,6 +712,18 @@ export function MultimediaTab({
                                     <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg hover:scale-105 transition-transform pointer-events-none">
                                         <Play size={18} fill="currentColor" className="ml-0.5" />
                                     </div>
+                                </button>
+                            )}
+
+                            {/* Subtitles Overlay Button */}
+                            {activeItemIsVideo && !videoError && (
+                                <button
+                                    type="button"
+                                    onClick={handleAddSubtitleTrack}
+                                    className={`absolute top-2.5 right-12 w-8 h-8 rounded-lg ${customSubtitleUrl ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"} hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-md`}
+                                    title={customSubtitleName ? `Subtitle: ${customSubtitleName}` : "Add Subtitles (.srt, .vtt)"}
+                                >
+                                    <Subtitles size={15} />
                                 </button>
                             )}
 

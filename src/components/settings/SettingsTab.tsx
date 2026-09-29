@@ -360,6 +360,35 @@ export function SettingsTab({
                             <option value="ask">Always Ask</option>
                         </select>
                     </SettingRow>
+
+                    <SettingToggle
+                        title="Download Subtitles & Captions"
+                        desc="Automatically download and embed subtitles and platform auto-captions into video files"
+                        checked={settings.downloadSubtitles ?? true}
+                        onChange={(v) => updateSetting("downloadSubtitles", v)}
+                    />
+
+                    {settings.downloadSubtitles !== false && (
+                        <SettingRow title="Subtitle Languages" desc="Target languages to fetch and embed">
+                            <select
+                                value={settings.subtitleLanguages || "all"}
+                                onChange={(e) => updateSetting("subtitleLanguages", e.target.value)}
+                                className="bg-surface-2 border border-border-subtle rounded-md px-3 py-1.5 text-caption font-semibold outline-none text-primary cursor-pointer"
+                            >
+                                <option value="all">All Available Subtitles</option>
+                                <option value="en.*,en">English</option>
+                                <option value="es.*,es">Spanish (Español)</option>
+                                <option value="fr.*,fr">French (Français)</option>
+                                <option value="de.*,de">German (Deutsch)</option>
+                                <option value="zh.*,zh">Chinese (中文)</option>
+                                <option value="ja.*,ja">Japanese (日本語)</option>
+                                <option value="ar.*,ar">Arabic (العربية)</option>
+                                <option value="ru.*,ru">Russian (Русский)</option>
+                                <option value="hi.*,hi">Hindi (हिन्दी)</option>
+                                <option value="pt.*,pt">Portuguese (Português)</option>
+                            </select>
+                        </SettingRow>
+                    )}
                 </SettingsSection>
             )}
 

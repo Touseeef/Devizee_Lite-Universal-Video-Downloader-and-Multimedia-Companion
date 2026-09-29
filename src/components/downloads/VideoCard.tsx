@@ -18,10 +18,12 @@ import {
     RotateCw,
     Scissors,
     Sparkles,
+    Subtitles,
     Volume2,
     VolumeX,
     X,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { formatFileSize, formatEstimatedSize } from "../../lib/format";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
@@ -69,7 +71,8 @@ export type VideoManagerApi = {
         specificInfo?: any,
         formatLabel?: string,
         duplicateAction?: "overwrite" | "keep_both",
-        customFolder?: string
+        customFolder?: string,
+        downloadSubtitlesOverride?: boolean
     ) => Promise<void>;
     handleRetryDownload: (record: DownloadRecord) => void;
     openFile: (path: string | null) => void;
@@ -222,6 +225,33 @@ export function VideoCard({
         setScheduleDateTime(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
     };
 
+    const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
+    const [customSubtitleName, setCustomSubtitleName] = useState<string | null>(null);
+    const [includeSubtitles, setIncludeSubtitles] = useState(true);
+
+    const handleAddSubtitleTrack = async () => {
+        try {
+            const selected = await open({
+                title: "Select Subtitle File",
+                multiple: false,
+                filters: [{ name: "Subtitles", extensions: ["srt", "vtt", "txt"] }],
+            });
+            if (selected && typeof selected === "string") {
+                const vttContent = await invoke<string>("read_subtitle_file", { path: selected });
+                if (customSubtitleUrl) {
+                    try { URL.revokeObjectURL(customSubtitleUrl); } catch (_) { }
+                }
+                const blob = new Blob([vttContent], { type: "text/vtt" });
+                const blobUrl = URL.createObjectURL(blob);
+                const filename = selected.split(/[\\/]/).pop() || "Subtitles";
+                setCustomSubtitleUrl(blobUrl);
+                setCustomSubtitleName(filename);
+            }
+        } catch (err) {
+            console.error("Load subtitles error:", err);
+        }
+    };
+
     const handleBrowseCustomFolder = async () => {
         try {
             const selected = await open({
@@ -244,7 +274,7 @@ export function VideoCard({
             const ext = selectedFormat?.ext || (isAudioSelected ? "mp3" : "mp4");
             const isAud = !!selectedFormat?.is_audio_only;
             const label = selectedFormat?.label || (isAud ? "Audio (MP3)" : "Best Video");
-            await handleStartDownload(fmtId, ext, isAud, videoInfo, label, undefined, customSaveFolder || undefined);
+            await handleStartDownload(fmtId, ext, isAud, videoInfo, label, undefined, customSaveFolder || undefined, includeSubtitles);
         } finally {
             setIsStartingDownload(false);
         }
@@ -309,7 +339,17 @@ export function VideoCard({
                                                 }
                                             }}
                                             className="w-full h-full object-contain"
-                                        />
+                                        >
+                                            {customSubtitleUrl && (
+                                                <track
+                                                    key={customSubtitleUrl}
+                                                    src={customSubtitleUrl}
+                                                    kind="subtitles"
+                                                    label={customSubtitleName || "Subtitles"}
+                                                    default
+                                                />
+                                            )}
+                                        </video>
                                         {videoPlaybackError && (
                                             <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-fast">
                                                 <AlertCircle size={26} className="text-status-warning mb-2" />
@@ -365,6 +405,15 @@ export function VideoCard({
 
                                 {/* Top Floating Window Controls (Fullscreen & Close only, no duplicate mute overlay) */}
                                 <div className="absolute top-2 right-2 flex items-center gap-1.5 z-30 bg-black/75 backdrop-blur-md p-1 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        type="button"
+                                        onClick={handleAddSubtitleTrack}
+                                        className={`w-7 h-7 rounded-md ${customSubtitleUrl ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20 text-white"} flex items-center justify-center transition-colors cursor-pointer`}
+                                        title={customSubtitleName ? `Subtitle: ${customSubtitleName}` : "Add Subtitles (.srt, .vtt)"}
+                                    >
+                                        <Subtitles size={13} />
+                                    </button>
+
                                     <button
                                         type="button"
                                         onClick={toggleFullscreen}
@@ -942,6 +991,23 @@ export function VideoCard({
                                         : `Download Video (${selectedFormat?.label || "Best Quality"}${formatEstimatedSize(selectedFormat, videoInfo.duration) ? ` • ${formatEstimatedSize(selectedFormat, videoInfo.duration)}` : ""})`}
                             </span>
                         </button>
+
+                        {!isAudioSelected && (
+                            <button
+                                type="button"
+                                onClick={() => setIncludeSubtitles(!includeSubtitles)}
+                                disabled={isStartingDownload}
+                                className={`px-3 py-3 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 flex items-center gap-1.5 text-xs font-semibold ${
+                                    includeSubtitles
+                                        ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/20"
+                                        : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-tertiary"
+                                }`}
+                                title={includeSubtitles ? "Subtitles will be downloaded and embedded into the video" : "Subtitles disabled"}
+                            >
+                                <Subtitles size={15} />
+                                <span className="hidden sm:inline">{includeSubtitles ? "Subs: On" : "Subs: Off"}</span>
+                            </button>
+                        )}
 
                         <button
                             type="button"
