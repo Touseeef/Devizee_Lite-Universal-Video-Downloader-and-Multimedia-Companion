@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import type { RefObject } from "react";
 import {
+    AlertCircle,
     Calendar,
     CheckCircle2,
     Clock,
@@ -16,6 +17,7 @@ import {
     RotateCcw,
     RotateCw,
     Scissors,
+    Sparkles,
     Volume2,
     VolumeX,
     X,
@@ -48,13 +50,13 @@ export type VideoManagerApi = {
     setTrimStart: (v: string) => void;
     trimEnd: string;
     setTrimEnd: (v: string) => void;
-    handlePlayVideo: (entry: { id: string; url: string; title: string; thumbnail: string; duration_string: string }) => void;
+    handlePlayVideo: (entry: { id: string; url: string; title: string; thumbnail: string; duration_string: string }, forceRefresh?: boolean) => void;
     handleVideoEnded: () => void;
     toggleFullscreen: () => void;
     handleCloseVideoPlayer: () => void;
     exitFullscreenAndKeepPlaying: () => void;
     sendIframeCommand: (func: string, args?: any[]) => void;
-    toggleAudioPreview: (url: string, id: string) => void;
+    toggleAudioPreview: (url: string, id: string, forceRefresh?: boolean) => void;
     handleSeek: (seconds: number) => void;
     handleSeekRelative: (offset: number) => void;
     toggleMute: () => void;
@@ -159,6 +161,8 @@ export function VideoCard({
 
     const [isStartingDownload, setIsStartingDownload] = useState(false);
     const [customSaveFolder, setCustomSaveFolder] = useState<string | null>(null);
+    const [videoPlaybackError, setVideoPlaybackError] = useState(false);
+    const [isRefreshingStream, setIsRefreshingStream] = useState(false);
 
     const isAudioSelected = !!selectedFormat?.is_audio_only;
     const isAudioPreviewing = previewingId === videoInfo.id && isAudioElementPlaying;
@@ -285,24 +289,57 @@ export function VideoCard({
                                         <span className="font-semibold tracking-wide">Loading Video...</span>
                                     </div>
                                 ) : videoStreamUrl ? (
-                                    <video
-                                        ref={videoElementRef}
-                                        src={videoStreamUrl}
-                                        controls
-                                        autoPlay
-                                        crossOrigin="anonymous"
-                                        onEnded={handleVideoEnded}
-                                        onPlay={() => {
-                                            stopAudioPlayback();
-                                            transitionPlayback({ type: "video", id: videoInfo.id, state: "playing" });
-                                        }}
-                                        onPause={() => {
-                                            if (nowPlaying.type === "video") {
-                                                transitionPlayback({ type: "video", id: videoInfo.id, state: "paused" });
-                                            }
-                                        }}
-                                        className="w-full h-full object-contain"
-                                    />
+                                    <>
+                                        <video
+                                            ref={videoElementRef}
+                                            src={videoStreamUrl}
+                                            controls
+                                            autoPlay
+                                            crossOrigin="anonymous"
+                                            onError={() => setVideoPlaybackError(true)}
+                                            onEnded={handleVideoEnded}
+                                            onPlay={() => {
+                                                setVideoPlaybackError(false);
+                                                stopAudioPlayback();
+                                                transitionPlayback({ type: "video", id: videoInfo.id, state: "playing" });
+                                            }}
+                                            onPause={() => {
+                                                if (nowPlaying.type === "video") {
+                                                    transitionPlayback({ type: "video", id: videoInfo.id, state: "paused" });
+                                                }
+                                            }}
+                                            className="w-full h-full object-contain"
+                                        />
+                                        {videoPlaybackError && (
+                                            <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-fast">
+                                                <AlertCircle size={26} className="text-status-warning mb-2" />
+                                                <p className="text-white text-caption font-semibold">Video Stream Expired or Protected</p>
+                                                <p className="text-secondary text-[11px] max-w-xs mt-1">Platform tokens (TikTok/Instagram) expire quickly. Click below to refresh the streaming link.</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        setVideoPlaybackError(false);
+                                                        setIsRefreshingStream(true);
+                                                        try {
+                                                            await handlePlayVideo({
+                                                                id: videoInfo.id,
+                                                                url: videoInfo.url,
+                                                                title: videoInfo.title,
+                                                                thumbnail: videoInfo.thumbnail,
+                                                                duration_string: videoInfo.duration_string || "",
+                                                            }, true);
+                                                        } finally {
+                                                            setIsRefreshingStream(false);
+                                                        }
+                                                    }}
+                                                    className="mt-3 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                                                >
+                                                    <RotateCw size={13} className={isRefreshingStream ? "animate-spin" : ""} />
+                                                    <span>Refresh Video Link</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
                                 ) : (
                                     /* Interactive YouTube Player Perfectly Centered */
                                     <div className="w-full h-full relative overflow-hidden bg-black flex items-center justify-center group/yt">
@@ -385,8 +422,8 @@ export function VideoCard({
                         <p className="text-secondary text-caption truncate mt-0.5 font-medium">{videoInfo.uploader}</p>
 
                         <div className="flex flex-wrap items-center justify-between gap-2.5 mt-3 pt-2.5 border-t border-border-subtle/50">
-                            {/* Bandwidth Saver: Play Audio Only Preview Button */}
-                            <div className="flex flex-col items-start gap-1">
+                            {/* Bandwidth Saver: Play Audio Only Preview Button + Refresh Stream + Saves Data Badge */}
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                     type="button"
                                     onClick={() => toggleAudioPreview(videoInfo.url, videoInfo.id)}
@@ -409,9 +446,40 @@ export function VideoCard({
                                     )}
                                 </button>
 
-                                <span className="text-[10px] text-tertiary flex items-center gap-1 font-medium pl-0.5 select-none">
-                                    <span className="text-accent font-bold">!</span> Data Saver
-                                </span>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setIsRefreshingStream(true);
+                                        setVideoPlaybackError(false);
+                                        try {
+                                            if (isAudioPreviewing) {
+                                                toggleAudioPreview(videoInfo.url, videoInfo.id, true);
+                                            } else {
+                                                await handlePlayVideo({
+                                                    id: videoInfo.id,
+                                                    url: videoInfo.url,
+                                                    title: videoInfo.title,
+                                                    thumbnail: videoInfo.thumbnail,
+                                                    duration_string: videoInfo.duration_string || "",
+                                                }, true);
+                                            }
+                                        } finally {
+                                            setTimeout(() => setIsRefreshingStream(false), 600);
+                                        }
+                                    }}
+                                    className="p-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 transition-colors shadow-2xs cursor-pointer"
+                                    title="Refresh media stream link if expired or failed"
+                                >
+                                    <RotateCw size={13} className={isRefreshingStream ? "animate-spin text-accent" : ""} />
+                                </button>
+
+                                <div
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-subtle/50 text-accent text-[11px] font-medium border border-accent/20 select-none shadow-2xs"
+                                    title="Streaming lightweight audio saves ~90% internet data compared to full video"
+                                >
+                                    <Sparkles size={11} className="text-accent shrink-0" />
+                                    <span>Saves Data</span>
+                                </div>
                             </div>
 
                             {/* Persistent Media Volume Slider */}

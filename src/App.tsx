@@ -1342,7 +1342,7 @@ export default function App() {
           displayedPercent = Math.min(99, Math.max(prevPercent, incoming));
         } else if (p.status === "muxing" || p.status === "verifying") {
           // Hold the bar at the last high value during finalize/verify
-          displayedPercent = Math.min(99, prevPercent);
+          displayedPercent = Math.min(99.5, Math.max(prevPercent, incoming));
         } else {
           // error / cancelled / interrupted — hold at last value
           displayedPercent = prevPercent;
@@ -1373,7 +1373,10 @@ export default function App() {
 
 
   // In-App Video Playback Trigger (Plays video on thumbnail click)
-  const handlePlayVideo = async (targetVideo: { id: string; url: string; title: string; thumbnail: string; duration_string: string }) => {
+  const handlePlayVideo = async (
+    targetVideo: { id: string; url: string; title: string; thumbnail: string; duration_string: string },
+    forceRefresh = false
+  ) => {
     unlockAudioContext();
     // D7: only flip to livePlaylist if we're not already in downloadedLibrary
     // mode with an active queue. Otherwise the state machine gets confused
@@ -1429,8 +1432,12 @@ export default function App() {
 
     setIsVideoLoading(true);
 
+    if (forceRefresh) {
+      videoStreamCache.current.delete(targetVideo.id);
+    }
+
     // If stream URL is already cached, start immediate playback
-    if (videoStreamCache.current.has(targetVideo.id)) {
+    if (!forceRefresh && videoStreamCache.current.has(targetVideo.id)) {
       setVideoStreamUrl(videoStreamCache.current.get(targetVideo.id)!);
       setIsVideoLoading(false);
       return;
@@ -1462,7 +1469,7 @@ export default function App() {
   };
 
   // Audio preview playback handlers with instantaneous cache & seeking
-  const toggleAudioPreview = async (targetUrl: string, songId: string) => {
+  const toggleAudioPreview = async (targetUrl: string, songId: string, forceRefresh = false) => {
     unlockAudioContext();
     if (!audioRef.current) return;
 
@@ -1481,7 +1488,15 @@ export default function App() {
     sendIframeCommand("pauseVideo");
     // Do NOT call setActiveVideoPlaying(false) — that unmounts the video element and loses position.
 
-    if (previewingId === songId) {
+    if (forceRefresh) {
+      if (audioStreamCache.current.has(songId)) {
+        const oldUrl = audioStreamCache.current.get(songId);
+        if (oldUrl && oldUrl.startsWith("blob:")) {
+          try { URL.revokeObjectURL(oldUrl); } catch (_) {}
+        }
+        audioStreamCache.current.delete(songId);
+      }
+    } else if (previewingId === songId) {
       if (isAudioElementPlaying) {
         audioRef.current.pause();
         setisAudioElementPlaying(false);
@@ -1509,7 +1524,7 @@ export default function App() {
     attachEqualizerToMedia(audioRef.current);
 
     // Instant Playback from cache if already resolved
-    if (audioStreamCache.current.has(songId)) {
+    if (!forceRefresh && audioStreamCache.current.has(songId)) {
       const cachedUrl = audioStreamCache.current.get(songId)!;
       audioRef.current.src = cachedUrl;
       audioRef.current.play()

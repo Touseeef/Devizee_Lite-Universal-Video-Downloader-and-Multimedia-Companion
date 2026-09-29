@@ -1478,6 +1478,13 @@ async fn start_download(
         let mut last_db_status: Option<DownloadStatus> = None;
         const DB_WRITE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1000);
 
+        let is_multi_stream = !is_audio_only
+            && (format_id.contains('+')
+                || format_id.contains("bestvideo")
+                || format_id.is_empty()
+                || format_id == "best");
+        let mut destination_count: usize = 0;
+
         if let Some(stdout) = child.stdout.take() {
             let mut reader = BufReader::new(stdout);
             let mut buf = Vec::new();
@@ -1492,19 +1499,42 @@ async fn start_download(
                 let line = String::from_utf8_lossy(&buf).trim_end().to_string();
                 buf.clear();
 
-                if line.contains("DEVIZEE_PROGRESS:") {
+                if line.contains("Destination:") {
+                    destination_count += 1;
+                    if let Some(idx) = line.find("Destination:") {
+                        let fp = line[idx + "Destination:".len()..]
+                            .trim()
+                            .trim_matches('"')
+                            .to_string();
+                        if !fp.is_empty() {
+                            final_file_path = Some(fp);
+                        }
+                    }
+                } else if line.contains("DEVIZEE_PROGRESS:") {
                     let parts_str = line.replace("DEVIZEE_PROGRESS:", "");
                     let parts: Vec<&str> = parts_str.split('|').collect();
                     if parts.len() >= 3 {
                         let percent_str = parts[0].trim().replace('%', "");
-                        let percent: f32 = percent_str.parse().unwrap_or(0.0);
+                        let raw_percent: f32 = percent_str.parse().unwrap_or(0.0);
                         let speed = parts[1].trim().to_string();
                         let eta = parts[2].trim().to_string();
 
-                        // F-XX: Do not flip to Muxing just because a stream
-                        // hit 100%. HD downloads have separate video + audio
-                        // streams that each hit 100%. Real muxing starts when
-                        // we see "Merging formats into" on stdout (handled below).
+                        // Multi-stream DASH smooth scaling:
+                        // Stream 1 (video) is ~85% of total download.
+                        // Stream 2 (audio) is the remaining ~15%.
+                        // This prevents the progress bar from locking at 99% during the entire second stream.
+                        let percent: f32 = if is_multi_stream {
+                            if destination_count <= 1 {
+                                (raw_percent * 0.85).min(85.0)
+                            } else {
+                                (85.0 + (raw_percent * 0.14)).min(99.0)
+                            }
+                        } else if destination_count > 1 {
+                            (85.0 + (raw_percent * 0.14)).min(99.0)
+                        } else {
+                            raw_percent.min(99.0)
+                        };
+
                         let status = DownloadStatus::Downloading;
 
                         // Always emit to the frontend for a live progress bar.
@@ -1546,14 +1576,6 @@ async fn start_download(
                             last_db_status = Some(status.clone());
                         }
                     }
-                } else if let Some(idx) = line.find("Destination:") {
-                    let fp = line[idx + "Destination:".len()..]
-                        .trim()
-                        .trim_matches('"')
-                        .to_string();
-                    if !fp.is_empty() {
-                        final_file_path = Some(fp);
-                    }
                 } else if line.contains("Merging formats into") {
                     if let Some(idx) = line.find("Merging formats into") {
                         let fp = line[idx + "Merging formats into".len()..]
@@ -1571,13 +1593,13 @@ async fn start_download(
                         "download-progress",
                         DownloadProgressPayload {
                             task_id: task_id_clone.clone(),
-                            percent: 100.0,
+                            percent: 99.5,
                             speed: "Finalizing".to_string(),
                             eta: "--".to_string(),
                             status: DownloadStatus::Muxing,
                             error_code: None,
                             error: None,
-                            file_path: None,
+                            file_path: final_file_path.clone(),
                         },
                     );
                     if let Some(state) = app_clone.try_state::<AppState>() {
@@ -1586,7 +1608,7 @@ async fn start_download(
                             &conn,
                             &task_id_clone,
                             &DownloadStatus::Muxing,
-                            100.0,
+                            99.5,
                             None,
                             None,
                             None,
@@ -1966,6 +1988,8 @@ async fn get_audio_stream_url(
         "-f",
         "bestaudio/best",
         "-g",
+        "--no-playlist",
+        "--force-ipv4",
         "--no-warnings",
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",
@@ -2000,6 +2024,8 @@ async fn get_video_stream_url(
         "-f",
         "best[ext=mp4]/best",
         "-g",
+        "--no-playlist",
+        "--force-ipv4",
         "--no-warnings",
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",

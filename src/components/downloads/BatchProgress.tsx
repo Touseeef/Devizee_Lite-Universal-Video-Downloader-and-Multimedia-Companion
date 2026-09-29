@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
+import { CheckCircle2, Loader2, X } from "lucide-react";
 import type { DownloadRecord } from "../../types";
 
 export function BatchProgress({
@@ -19,33 +20,49 @@ export function BatchProgress({
     );
     const finished = batchItems.filter((h) => h.status === "completed").length;
     const total = taskIds.length;
+    const isComplete = total > 0 && finished === total;
     const avgPercent =
         batchItems.length > 0
             ? Math.round(batchItems.reduce((acc, h) => acc + h.percent, 0) / total)
             : 0;
 
+    // Auto-dismiss completed batch notification from the dashboard after 5 seconds
+    useEffect(() => {
+        if (!isComplete) return;
+        const timer = setTimeout(() => {
+            onClear();
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, [isComplete, onClear]);
+
     return (
-        <div className="bg-surface-1 rounded-md p-4 shadow-raised border border-accent/40 space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-fast">
+        <div className={`bg-surface-1 rounded-xl p-4 border transition-all animate-in fade-in slide-in-from-bottom-2 duration-fast ${isComplete ? "border-status-success/40 bg-status-success-subtle/10" : "border-accent/30 shadow-sm"
+            } space-y-2.5`}>
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <Loader2 size={15} className="animate-spin text-accent" />
+                <div className="flex items-center gap-2.5">
+                    {isComplete ? (
+                        <CheckCircle2 size={18} className="text-status-success shrink-0" />
+                    ) : (
+                        <Loader2 size={16} className="animate-spin text-accent shrink-0" />
+                    )}
                     <div>
                         <h4 className="font-semibold text-body-sm text-primary">
-                            Batch Downloading: {title}
+                            {isComplete ? `Batch Completed: ${title}` : `Batch Downloading: ${title}`}
                         </h4>
                         <p className="text-caption text-secondary">
                             Format:{" "}
                             <span className="font-mono font-semibold text-accent">{formatLabel}</span>{" "}
-                            • {total} items in batch
+                            • {isComplete ? `All ${total} items finished` : `${total} items in batch`}
                         </p>
                     </div>
                 </div>
                 <button
                     type="button"
                     onClick={onClear}
-                    className="px-2.5 py-1 rounded-md bg-surface-2 hover:bg-surface-0 text-secondary hover:text-primary text-caption font-semibold transition-colors border border-border-subtle"
+                    className="p-1 rounded-lg text-tertiary hover:text-primary hover:bg-surface-2 transition-colors cursor-pointer"
+                    title="Dismiss"
                 >
-                    Clear Batch View
+                    <X size={15} />
                 </button>
             </div>
 
@@ -58,7 +75,7 @@ export function BatchProgress({
                 </div>
                 <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
                     <div
-                        className={`h-full transition-all duration-300 ${finished === total ? "bg-status-success" : "bg-accent"
+                        className={`h-full transition-all duration-300 ${isComplete ? "bg-status-success" : "bg-accent"
                             }`}
                         style={{ width: `${avgPercent}%` }}
                     />
