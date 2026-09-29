@@ -19,40 +19,42 @@ export function BatchProgress({
         taskIds.some((id) => h.id.startsWith(id) || h.id === id)
     );
     const finished = batchItems.filter((h) => h.status === "completed").length;
+    const failed = batchItems.filter((h) => h.status === "error" || h.status === "cancelled").length;
     const total = taskIds.length;
+    const isDone = total > 0 && (finished + failed) >= total;
     const isComplete = total > 0 && finished === total;
     const avgPercent =
         batchItems.length > 0
             ? Math.round(batchItems.reduce((acc, h) => acc + h.percent, 0) / total)
             : 0;
 
-    // Auto-dismiss completed batch notification from the dashboard after 5 seconds
+    // Auto-dismiss completed or settled batch notification from the dashboard after 5 seconds
     useEffect(() => {
-        if (!isComplete) return;
+        if (!isDone) return;
         const timer = setTimeout(() => {
             onClear();
         }, 5000);
         return () => clearTimeout(timer);
-    }, [isComplete, onClear]);
+    }, [isDone, onClear]);
 
     return (
-        <div className={`bg-surface-1 rounded-xl p-4 border transition-all animate-in fade-in slide-in-from-bottom-2 duration-fast ${isComplete ? "border-status-success/40 bg-status-success-subtle/10" : "border-accent/30 shadow-sm"
+        <div className={`bg-surface-1 rounded-xl p-4 border transition-all animate-in fade-in slide-in-from-bottom-2 duration-fast ${isDone ? (isComplete ? "border-status-success/40 bg-status-success-subtle/10" : "border-status-warning/40 bg-status-warning-subtle/10") : "border-accent/30 shadow-sm"
             } space-y-2.5`}>
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                    {isComplete ? (
-                        <CheckCircle2 size={18} className="text-status-success shrink-0" />
+                    {isDone ? (
+                        <CheckCircle2 size={18} className={isComplete ? "text-status-success shrink-0" : "text-status-warning shrink-0"} />
                     ) : (
                         <Loader2 size={16} className="animate-spin text-accent shrink-0" />
                     )}
                     <div>
                         <h4 className="font-semibold text-body-sm text-primary">
-                            {isComplete ? `Batch Completed: ${title}` : `Batch Downloading: ${title}`}
+                            {isDone ? (failed > 0 ? `Batch Finished: ${title} (${finished} finished, ${failed} failed)` : `Batch Completed: ${title}`) : `Batch Downloading: ${title}`}
                         </h4>
                         <p className="text-caption text-secondary">
                             Format:{" "}
                             <span className="font-mono font-semibold text-accent">{formatLabel}</span>{" "}
-                            • {isComplete ? `All ${total} items finished` : `${total} items in batch`}
+                            • {isDone ? `Processed all ${total} items` : `${total} items in batch`}
                         </p>
                     </div>
                 </div>

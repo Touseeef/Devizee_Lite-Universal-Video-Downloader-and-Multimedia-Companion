@@ -325,7 +325,6 @@ export function VideoCard({
                                             src={videoStreamUrl}
                                             controls
                                             autoPlay
-                                            crossOrigin="anonymous"
                                             onError={() => setVideoPlaybackError(true)}
                                             onEnded={handleVideoEnded}
                                             onPlay={() => {

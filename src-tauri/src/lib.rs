@@ -275,6 +275,9 @@ fn get_ffmpeg_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     dev_candidates.into_iter().find(|path| path.exists())
 }
 
+const BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
 /// Tauri command to inspect any URL and extract metadata & format tiers
 #[tauri::command]
 async fn fetch_video_info(
@@ -292,6 +295,13 @@ async fn fetch_video_info(
         "--no-warnings",
         "--force-ipv4",
         "--geo-bypass",
+        "--no-check-certificates",
+        "--user-agent",
+        BROWSER_USER_AGENT,
+        "--socket-timeout",
+        "30",
+        "--retries",
+        "3",
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
@@ -1051,6 +1061,9 @@ async fn start_download(
             "--no-warnings",
             "--force-ipv4",
             "--geo-bypass",
+            "--no-check-certificates",
+            "--user-agent",
+            BROWSER_USER_AGENT,
             "--concurrent-fragments",
             "4",
             "--compat-options",
@@ -1067,12 +1080,18 @@ async fn start_download(
             // A single dropped fragment on a shaky Wi-Fi connection used to
             // abort the entire download. These flags retry each fragment up
             // to 10 times with exponential backoff before giving up.
+            "--retries",
+            "10",
             "--fragment-retries",
             "10",
             "--retry-sleep",
             "fragment:exp=1:20",
+            "--file-access-retries",
+            "5",
             "--socket-timeout",
             "30",
+            "--convert-thumbnails",
+            "jpg",
         ]);
 
         // Priority 9: Stage temp/.part files into separate temp folder if configured
@@ -1506,6 +1525,7 @@ async fn start_download(
                 || format_id.contains("bestvideo")
                 || format_id.is_empty()
                 || format_id == "best");
+        let mut detected_stream_count: Option<usize> = None;
         let mut destination_count: usize = 0;
 
         if let Some(stdout) = child.stdout.take() {
@@ -1522,14 +1542,27 @@ async fn start_download(
                 let line = String::from_utf8_lossy(&buf).trim_end().to_string();
                 buf.clear();
 
+                if line.contains("format(s)") && line.contains("Downloading") {
+                    if let Some(pos) = line.find(" format(s)") {
+                        if let Some(space_pos) = line[..pos].rfind(' ') {
+                            if let Ok(count) = line[space_pos + 1..pos].parse::<usize>() {
+                                detected_stream_count = Some(count);
+                            }
+                        }
+                    }
+                }
+
                 if line.contains("Destination:") {
-                    destination_count += 1;
+                    let is_sub = line.ends_with(".vtt") || line.ends_with(".srt") || line.ends_with(".lrc");
+                    if !is_sub {
+                        destination_count += 1;
+                    }
                     if let Some(idx) = line.find("Destination:") {
                         let fp = line[idx + "Destination:".len()..]
                             .trim()
                             .trim_matches('"')
                             .to_string();
-                        if !fp.is_empty() {
+                        if !fp.is_empty() && !is_sub {
                             final_file_path = Some(fp);
                         }
                     }
@@ -1543,17 +1576,17 @@ async fn start_download(
                         let eta = parts[2].trim().to_string();
 
                         // Multi-stream DASH smooth scaling:
+                        // Accurately tracks actual stream count (e.g. YouTube DASH video+audio = 2, TikTok single = 1)
                         // Stream 1 (video) is ~85% of total download.
                         // Stream 2 (audio) is the remaining ~15%.
-                        // This prevents the progress bar from locking at 99% during the entire second stream.
-                        let percent: f32 = if is_multi_stream {
+                        // This prevents progress locking at 85% on single streams or 99% during multi-stream.
+                        let is_multi = detected_stream_count.map(|c| c > 1).unwrap_or(is_multi_stream);
+                        let percent: f32 = if is_multi {
                             if destination_count <= 1 {
                                 (raw_percent * 0.85).min(85.0)
                             } else {
                                 (85.0 + (raw_percent * 0.14)).min(99.0)
                             }
-                        } else if destination_count > 1 {
-                            (85.0 + (raw_percent * 0.14)).min(99.0)
                         } else {
                             raw_percent.min(99.0)
                         };
@@ -2014,6 +2047,13 @@ async fn get_audio_stream_url(
         "--no-playlist",
         "--force-ipv4",
         "--geo-bypass",
+        "--no-check-certificates",
+        "--user-agent",
+        BROWSER_USER_AGENT,
+        "--socket-timeout",
+        "30",
+        "--retries",
+        "3",
         "--no-warnings",
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",
@@ -2051,6 +2091,13 @@ async fn get_video_stream_url(
         "--no-playlist",
         "--force-ipv4",
         "--geo-bypass",
+        "--no-check-certificates",
+        "--user-agent",
+        BROWSER_USER_AGENT,
+        "--socket-timeout",
+        "30",
+        "--retries",
+        "3",
         "--no-warnings",
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",
@@ -2096,6 +2143,13 @@ async fn fetch_playlist_info(
         "--no-warnings",
         "--force-ipv4",
         "--geo-bypass",
+        "--no-check-certificates",
+        "--user-agent",
+        BROWSER_USER_AGENT,
+        "--socket-timeout",
+        "30",
+        "--retries",
+        "3",
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
@@ -2487,6 +2541,13 @@ async fn fetch_audio_bytes(
         "--no-colors",
         "--force-ipv4",
         "--geo-bypass",
+        "--no-check-certificates",
+        "--user-agent",
+        BROWSER_USER_AGENT,
+        "--socket-timeout",
+        "30",
+        "--retries",
+        "3",
         "--quiet",
         "--no-part",
         "--concurrent-fragments",

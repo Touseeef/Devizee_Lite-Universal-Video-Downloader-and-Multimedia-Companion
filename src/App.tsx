@@ -1419,11 +1419,6 @@ export default function App() {
 
     setActiveVideoPlaying(true);
 
-    // Attach the 8-band EQ to the dashboard video element (idempotent)
-    if (videoElementRef.current) {
-      attachEqualizerToMedia(videoElementRef.current);
-    }
-
     // Fast-Path for YouTube: Instant player activation without 4-7s yt-dlp latency
     const isYouTube = /youtu(\.be|be\.com)/i.test(targetVideo.url) || /^[a-zA-Z0-9_-]{11}$/.test(targetVideo.id);
     if (isYouTube) {
