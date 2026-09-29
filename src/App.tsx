@@ -436,6 +436,7 @@ export default function App() {
       logLevel: "info",
       downloadSubtitles: true,
       subtitleLanguages: "all",
+      allowInsecureSSL: false,
     };
   });
 
@@ -1847,7 +1848,11 @@ function detectAudioMime(arr: Uint8Array): string {
 
         if (videoId) {
           const videoClean = `https://www.youtube.com/watch?v=${videoId}`;
-          const info = await invoke<VideoInfo>("fetch_video_info", { url: videoClean });
+          const info = await invoke<VideoInfo>("fetch_video_info", {
+            url: videoClean,
+            cookies_from_browser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
+            allow_insecure_ssl: settings.allowInsecureSSL || false,
+          });
           setVideoInfo(info);
           if (info.duration_string && info.duration_string !== "--:--") {
             setTrimEnd(info.duration_string);
@@ -1855,20 +1860,35 @@ function detectAudioMime(arr: Uint8Array): string {
         }
         await plPromise;
       } else if (videoId) {
-        const info = await invoke<VideoInfo>("fetch_video_info", { url: clean });
+        const info = await invoke<VideoInfo>("fetch_video_info", {
+          url: clean,
+          cookies_from_browser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
+          allow_insecure_ssl: settings.allowInsecureSSL || false,
+        });
         setVideoInfo(info);
         if (info.duration_string && info.duration_string !== "--:--") {
           setTrimEnd(info.duration_string);
         }
       } else {
-        const info = await invoke<VideoInfo>("fetch_video_info", { url: clean });
+        const info = await invoke<VideoInfo>("fetch_video_info", {
+          url: clean,
+          cookies_from_browser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
+          allow_insecure_ssl: settings.allowInsecureSSL || false,
+        });
         setVideoInfo(info);
         if (info.duration_string && info.duration_string !== "--:--") {
           setTrimEnd(info.duration_string);
         }
       }
     } catch (err: any) {
-      setFetchError(err.toString());
+      const errStr = err ? err.toString() : "Unknown error";
+      if (errStr.includes("DRM_PROTECTED")) {
+        setFetchError("🔒 DRM Protected: This media or streaming platform uses hardware-level DRM encryption (Widevine / PlayReady). Devizee complies with copyright standards and cannot download from subscription streaming services.");
+      } else if (errStr.includes("Sign in to confirm")) {
+        setFetchError("🔑 Sign-In Required: This video requires age verification or an account login. Enable 'YouTube Cookies from Browser' in Settings → Advanced or relay from the Devizee Browser Extension.");
+      } else {
+        setFetchError(errStr);
+      }
     } finally {
       setIsFetching(false);
     }
@@ -2145,6 +2165,8 @@ function detectAudioMime(arr: Uint8Array): string {
         estimatedSizeBytes: estimatedSize,
         downloadSubtitles: downloadSubtitlesOverride !== undefined ? downloadSubtitlesOverride : (settings.downloadSubtitles ?? true),
         subtitleLanguages: settings.subtitleLanguages || "all",
+        allowInsecureSsl: settings.allowInsecureSSL || false,
+        cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
     } catch (e: any) {
       console.error("Start download failed:", e);
@@ -2216,6 +2238,8 @@ function detectAudioMime(arr: Uint8Array): string {
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
+        allowInsecureSsl: settings.allowInsecureSSL || false,
+        cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
     } catch (e: any) {
       console.error("Retry download failed:", e);
@@ -2319,6 +2343,8 @@ function detectAudioMime(arr: Uint8Array): string {
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
+        allowInsecureSsl: settings.allowInsecureSSL || false,
+        cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
     } catch (e: any) {
       console.error("Refresh URL failed:", e);

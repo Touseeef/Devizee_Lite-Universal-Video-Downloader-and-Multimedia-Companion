@@ -49,5 +49,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0NkRBRUY1NjE2OERGMDkKUldRSjMyaGg5YTV0cFBRSkN1NEp3bnRGR3N0clVjSnI4MDlUbFJqaVB5b0cvTldlM1plU2R4aGMK",
+      "endpoints": [
+        "https://github.com/devizee/devizee/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -17,6 +17,8 @@ import {
     VolumeX,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { SettingsSection } from "../common/SettingsSection";
 import { SettingRow, SettingToggle } from "../common/SettingRow";
 import { ThemeDropdown } from "../common/ThemeDropdown";
@@ -125,12 +127,78 @@ export function SettingsTab({
         }
     };
 
+    const [isCheckingAppUpdate, setIsCheckingAppUpdate] = useState(false);
+    const [appUpdateAvailable, setAppUpdateAvailable] = useState<any>(null);
+    const [appUpdateMessage, setAppUpdateMessage] = useState<string>("");
+    const [isInstallingAppUpdate, setIsInstallingAppUpdate] = useState(false);
+    const [appDownloadProgress, setAppDownloadProgress] = useState<number | null>(null);
+
+    const handleCheckAppUpdate = async () => {
+        setIsCheckingAppUpdate(true);
+        setAppUpdateMessage("");
+        try {
+            const update = await check();
+            if (update?.available) {
+                setAppUpdateAvailable(update);
+                setAppUpdateMessage(`Devizee Desktop v${update.version} is available!`);
+            } else {
+                setAppUpdateMessage("Devizee is up to date (running latest release).");
+                setAppUpdateAvailable(null);
+            }
+        } catch (err: any) {
+            setAppUpdateMessage(`Update check failed: ${err}`);
+        } finally {
+            setIsCheckingAppUpdate(false);
+        }
+    };
+
+    const handleInstallAppUpdate = async () => {
+        if (!appUpdateAvailable) return;
+        setIsInstallingAppUpdate(true);
+        let downloaded = 0;
+        let contentLength = 0;
+
+        try {
+            await appUpdateAvailable.downloadAndInstall((event: any) => {
+                switch (event.event) {
+                    case "Started":
+                        contentLength = event.data.contentLength || 0;
+                        break;
+                    case "Progress":
+                        downloaded += event.data.chunkLength;
+                        if (contentLength > 0) {
+                            setAppDownloadProgress(Math.round((downloaded / contentLength) * 100));
+                        }
+                        break;
+                    case "Finished":
+                        setAppDownloadProgress(100);
+                        break;
+                }
+            });
+            await relaunch();
+        } catch (err: any) {
+            setAppUpdateMessage(`Installation failed: ${err}`);
+            setIsInstallingAppUpdate(false);
+        }
+    };
+
     const handleUpdateEngine = async () => {
         setIsUpdatingEngine(true);
         setEngineStatusMessage("Downloading latest yt-dlp binary from GitHub...");
         try {
-            const res = await invoke<{ success: boolean; new_version: string; message: string }>("update_engine");
+            const res = await invoke<{ success: boolean; new_version: string; new_hash?: string; message: string }>("update_engine");
             setEngineStatusMessage(res.message);
+            // Regression 3 fix: update baseline hash in localStorage immediately so SC-3 does not alert
+            if (res.new_hash) {
+                try {
+                    const raw = localStorage.getItem("devizee_sidecar_hashes_v1");
+                    const parsed = raw ? JSON.parse(raw) : {};
+                    parsed.yt_dlp = res.new_hash;
+                    localStorage.setItem("devizee_sidecar_hashes_v1", JSON.stringify(parsed));
+                } catch (e) {
+                    console.error("Failed to update sidecar baseline hash:", e);
+                }
+            }
             setEngineUpdateCheck(null);
             await handleFetchEngineInfo();
         } catch (e: any) {
@@ -248,17 +316,46 @@ export function SettingsTab({
                         onChange={(v) => updateSetting("warnOnCloseActiveDownloads", v)}
                     />
 
-                    <SettingRow title={t("settings_updates")} desc="Check GitHub for newer releases and yt-dlp patches">
-                        <select
-                            value={settings.checkUpdates}
-                            onChange={(e) => updateSetting("checkUpdates", e.target.value)}
-                            className="bg-surface-2 border border-border-subtle rounded-md px-3 py-1.5 text-caption font-semibold outline-none text-primary cursor-pointer"
-                        >
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="manual">Manual Only</option>
-                        </select>
+                    <SettingRow title="Devizee Application Updates" desc="Check for new signed desktop releases directly from GitHub">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <button
+                                type="button"
+                                disabled={isCheckingAppUpdate || isInstallingAppUpdate}
+                                onClick={handleCheckAppUpdate}
+                                className="px-3.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold flex items-center gap-1.5 text-accent border border-border-subtle cursor-pointer disabled:opacity-50 transition-colors shrink-0"
+                            >
+                                <RefreshCw size={13} className={isCheckingAppUpdate ? "animate-spin" : ""} />
+                                <span>{isCheckingAppUpdate ? "Checking..." : "Check for App Update"}</span>
+                            </button>
+
+                            {appUpdateAvailable && (
+                                <button
+                                    type="button"
+                                    disabled={isInstallingAppUpdate}
+                                    onClick={handleInstallAppUpdate}
+                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50 transition-all"
+                                >
+                                    {isInstallingAppUpdate ? (
+                                        <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                        <Download size={13} />
+                                    )}
+                                    <span>
+                                        {isInstallingAppUpdate
+                                            ? appDownloadProgress !== null ? `Installing (${appDownloadProgress}%)` : "Installing..."
+                                            : `Install v${appUpdateAvailable.version} & Restart`}
+                                    </span>
+                                </button>
+                            )}
+                        </div>
                     </SettingRow>
+
+                    {appUpdateMessage && (
+                        <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle text-caption flex items-center gap-2 text-secondary animate-in fade-in">
+                            <Sparkles size={14} className="text-accent shrink-0" />
+                            <span>{appUpdateMessage}</span>
+                        </div>
+                    )}
                 </SettingsSection>
             )}
 
@@ -769,6 +866,13 @@ export function SettingsTab({
                                 <option value="vivaldi">Vivaldi</option>
                             </select>
                         </SettingRow>
+
+                        <SettingToggle
+                            title="Allow Insecure SSL (Corporate/School Proxies)"
+                            desc="Bypasses TLS certificate validation. Only enable if you are behind an enterprise, university, or antivirus proxy that inspects SSL traffic. Disabled by default for security."
+                            checked={!!settings.allowInsecureSSL}
+                            onChange={(v) => updateSetting("allowInsecureSSL", v)}
+                        />
 
                         <SettingRow title={t("settings_custom_flags")} desc={t("settings_custom_flags_desc")}>
                             <input

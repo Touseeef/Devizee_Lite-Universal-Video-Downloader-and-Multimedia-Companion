@@ -278,13 +278,33 @@ fn get_ffmpeg_path(app: &tauri::AppHandle) -> Option<PathBuf> {
 const BROWSER_USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
+/// Checks if a URL belongs to known DRM-restricted subscription services
+fn is_known_drm_service(url: &str) -> bool {
+    let lower = url.to_lowercase();
+    lower.contains("netflix.com")
+        || lower.contains("disneyplus.com")
+        || lower.contains("primevideo.com")
+        || lower.contains("hulu.com")
+        || lower.contains("hbomax.com")
+        || lower.contains("max.com")
+        || lower.contains("peacocktv.com")
+        || lower.contains("paramountplus.com")
+        || (lower.contains("apple.com") && lower.contains("/tv"))
+        || lower.contains("spotify.com")
+}
+
 /// Tauri command to inspect any URL and extract metadata & format tiers
 #[tauri::command]
 async fn fetch_video_info(
     url: String,
     cookies_from_browser: Option<String>,
+    allow_insecure_ssl: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<VideoInfo, String> {
+    if is_known_drm_service(&url) {
+        return Err("DRM_PROTECTED: This platform uses hardware-level DRM encryption (Widevine/PlayReady) and cannot be downloaded.".to_string());
+    }
+
     let yt_dlp_path = get_yt_dlp_path(&app)?;
 
     let mut cmd = Command::new(&yt_dlp_path);
@@ -295,7 +315,6 @@ async fn fetch_video_info(
         "--no-warnings",
         "--force-ipv4",
         "--geo-bypass",
-        "--no-check-certificates",
         "--user-agent",
         BROWSER_USER_AGENT,
         "--socket-timeout",
@@ -307,6 +326,11 @@ async fn fetch_video_info(
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",
     ]);
+
+    if allow_insecure_ssl == Some(true) {
+        cmd.arg("--no-check-certificates");
+    }
+
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
     }
@@ -325,6 +349,11 @@ async fn fetch_video_info(
             .find(|line| line.starts_with("ERROR:"))
             .unwrap_or(&stderr)
             .to_string();
+
+        if cleaned_error.to_lowercase().contains("drm protected") {
+            return Err("DRM_PROTECTED: This media is protected by Digital Rights Management (DRM) and cannot be downloaded.".to_string());
+        }
+
         return Err(cleaned_error);
     }
 
@@ -883,6 +912,7 @@ async fn start_download(
     estimated_size_bytes: Option<u64>,
     download_subtitles: Option<bool>,
     subtitle_languages: Option<String>,
+    allow_insecure_ssl: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let yt_dlp_path = get_yt_dlp_path(&app)?;
@@ -1039,6 +1069,7 @@ async fn start_download(
     let download_dir_clone = download_dir.clone();
     let url_clone = url.clone();
     let cookies_clone = cookies_from_browser.clone();
+    let allow_insecure_ssl_clone = allow_insecure_ssl;
 
     std::thread::spawn(move || {
         // Hold the concurrency permit for the entire lifetime of this
@@ -1063,7 +1094,6 @@ async fn start_download(
             "--no-warnings",
             "--force-ipv4",
             "--geo-bypass",
-            "--no-check-certificates",
             "--user-agent",
             BROWSER_USER_AGENT,
             "--concurrent-fragments",
@@ -1095,6 +1125,10 @@ async fn start_download(
             "--convert-thumbnails",
             "jpg",
         ]);
+
+        if allow_insecure_ssl_clone == Some(true) {
+            cmd.arg("--no-check-certificates");
+        }
 
         // Priority 9: Stage temp/.part files into separate temp folder if configured
         if let Some(ref tp) = resolved_temp_dir {
@@ -2056,7 +2090,6 @@ async fn get_audio_stream_url(
         "--no-playlist",
         "--force-ipv4",
         "--geo-bypass",
-        "--no-check-certificates",
         "--user-agent",
         BROWSER_USER_AGENT,
         "--socket-timeout",
@@ -2100,7 +2133,6 @@ async fn get_video_stream_url(
         "--no-playlist",
         "--force-ipv4",
         "--geo-bypass",
-        "--no-check-certificates",
         "--user-agent",
         BROWSER_USER_AGENT,
         "--socket-timeout",
@@ -2152,7 +2184,6 @@ async fn fetch_playlist_info(
         "--no-warnings",
         "--force-ipv4",
         "--geo-bypass",
-        "--no-check-certificates",
         "--user-agent",
         BROWSER_USER_AGENT,
         "--socket-timeout",
@@ -2550,7 +2581,6 @@ async fn fetch_audio_bytes(
         "--no-colors",
         "--force-ipv4",
         "--geo-bypass",
-        "--no-check-certificates",
         "--user-agent",
         BROWSER_USER_AGENT,
         "--socket-timeout",
@@ -2707,6 +2737,7 @@ pub struct EngineUpdateCheck {
 pub struct EngineUpdateResult {
     pub success: bool,
     pub new_version: String,
+    pub new_hash: Option<String>,
     pub message: String,
 }
 
@@ -2861,9 +2892,12 @@ async fn update_engine(app: tauri::AppHandle) -> Result<EngineUpdateResult, Stri
     let backup_path = bin_dir.join("yt-dlp.exe.old");
     let _ = std::fs::remove_file(&backup_path);
 
+    let new_hash = compute_file_sha256(&target_path);
+
     Ok(EngineUpdateResult {
         success: true,
         new_version: new_version.clone(),
+        new_hash,
         message: format!("Successfully upgraded yt-dlp engine to version {}", new_version),
     })
 }
@@ -2973,21 +3007,43 @@ fn start_local_http_bridge(app_handle: tauri::AppHandle, port: u16) {
         }
     };
 
+    // Generate random 32-character bridge token on startup
+    let token = format!(
+        "{:016x}{:016x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(987654321),
+        std::process::id()
+    );
+
+    // Save token to %LOCALAPPDATA%\Devizee\bridge_token
+    if let Ok(app_dir) = app_handle.path().app_local_data_dir() {
+        let _ = std::fs::create_dir_all(&app_dir);
+        let _ = std::fs::write(app_dir.join("bridge_token"), token.as_bytes());
+    }
+
     println!("[Devizee Bridge] Listening on http://127.0.0.1:{}", port);
 
+    let token_clone = token.clone();
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             if let Ok(mut stream) = stream {
                 let app = app_handle.clone();
+                let token = token_clone.clone();
                 std::thread::spawn(move || {
-                    handle_bridge_connection(&mut stream, &app);
+                    handle_bridge_connection(&mut stream, &app, &token);
                 });
             }
         }
     });
 }
 
-fn handle_bridge_connection(stream: &mut std::net::TcpStream, app: &tauri::AppHandle) {
+fn handle_bridge_connection(
+    stream: &mut std::net::TcpStream,
+    app: &tauri::AppHandle,
+    expected_token: &str,
+) {
     use std::io::{Read, Write};
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(1500)));
 
@@ -3008,7 +3064,47 @@ fn handle_bridge_connection(stream: &mut std::net::TcpStream, app: &tauri::AppHa
     let method = parts.next().unwrap_or("");
     let path = parts.next().unwrap_or("");
 
-    let cors_headers = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close";
+    // Extract Origin and X-Devizee-Token headers
+    let mut origin: Option<String> = None;
+    let mut token_header: Option<String> = None;
+
+    for line in lines {
+        if line.is_empty() {
+            break;
+        }
+        let lower = line.to_lowercase();
+        if lower.starts_with("origin:") {
+            origin = Some(line["origin:".len()..].trim().to_string());
+        } else if lower.starts_with("x-devizee-token:") {
+            token_header = Some(line["x-devizee-token:".len()..].trim().to_string());
+        }
+    }
+
+    // SECURITY: Block external websites from triggering downloads.
+    // Browsers forbid web pages from setting chrome-extension:// or moz-extension:// Origin.
+    let is_valid_extension_origin = match origin.as_deref() {
+        Some(o) => o.starts_with("chrome-extension://") || o.starts_with("moz-extension://"),
+        None => false,
+    };
+
+    let is_authenticated_token = match token_header.as_deref() {
+        Some(t) => t == expected_token,
+        None => false,
+    };
+
+    // If an external web page attempts cross-origin access, reject immediately with 403 Forbidden!
+    if origin.is_some() && !is_valid_extension_origin {
+        let resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nForbidden: Cross-origin web requests are blocked.";
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    let allowed_origin = origin.unwrap_or_else(|| "null".to_string());
+    let cors_headers = format!(
+        "Access-Control-Allow-Origin: {}\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-Devizee-Token\r\nConnection: close",
+        allowed_origin
+    );
 
     if method == "OPTIONS" {
         let resp = format!("HTTP/1.1 204 No Content\r\n{}\r\n\r\n", cors_headers);
@@ -3036,6 +3132,20 @@ fn handle_bridge_connection(stream: &mut std::net::TcpStream, app: &tauri::AppHa
     }
 
     if method == "POST" && path.starts_with("/download") {
+        // Enforce that caller is either a valid extension Origin OR holds the secret token
+        if !is_valid_extension_origin && !is_authenticated_token {
+            let body = serde_json::json!({"error": "unauthorized"}).to_string();
+            let resp = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+                body.len(),
+                cors_headers,
+                body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
+            return;
+        }
+
         let mut target_url: Option<String> = None;
 
         if let Some(body_start) = req.find("\r\n\r\n") {
@@ -3050,6 +3160,22 @@ fn handle_bridge_connection(stream: &mut std::net::TcpStream, app: &tauri::AppHa
         if let Some(url) = target_url {
             let clean_url = url.trim().to_string();
             if clean_url.starts_with("http://") || clean_url.starts_with("https://") {
+                if is_known_drm_service(&clean_url) {
+                    let body = serde_json::json!({
+                        "error": "drm_protected",
+                        "message": "This platform uses hardware-level DRM encryption and cannot be downloaded."
+                    }).to_string();
+                    let resp = format!(
+                        "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+                        body.len(),
+                        cors_headers,
+                        body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    let _ = stream.flush();
+                    return;
+                }
+
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.show();
                     let _ = win.unminimize();
@@ -3096,6 +3222,7 @@ fn handle_bridge_connection(stream: &mut std::net::TcpStream, app: &tauri::AppHa
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
