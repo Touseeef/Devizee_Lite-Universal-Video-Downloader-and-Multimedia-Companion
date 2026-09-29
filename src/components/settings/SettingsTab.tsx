@@ -161,6 +161,15 @@ export function SettingsTab({
                             <option value="de">Deutsch</option>
                             <option value="fr">Français</option>
                             <option value="zh">中文 (简体)</option>
+                            <option value="ja">日本語</option>
+                            <option value="ru">Русский</option>
+                            <option value="pt">Português</option>
+                            <option value="it">Italiano</option>
+                            <option value="tr">Türkçe</option>
+                            <option value="ar">العربية</option>
+                            <option value="hi">हिन्दी</option>
+                            <option value="ur">اردو</option>
+                            <option value="ko">한국어</option>
                         </select>
                     </SettingRow>
 

@@ -92,7 +92,7 @@ export const ActivityList = React.memo(function ActivityList({
                         />
                         <input
                             type="text"
-                            placeholder="Search..."
+                            placeholder={t("search_placeholder")}
                             value={activitySearchQuery}
                             onChange={(e) => setActivitySearchQuery(e.target.value)}
                             className="bg-surface-1 border border-border-subtle rounded-md pl-8 pr-7 h-8 text-caption font-medium text-primary placeholder:text-tertiary focus:outline-none focus:ring-1 focus:ring-accent w-36 sm:w-44"
@@ -115,7 +115,7 @@ export const ActivityList = React.memo(function ActivityList({
                     >
                         <option value="all">{t("filter_all")}</option>
                         <option value="active">{t("filter_active")}</option>
-                        <option value="queued">Queued</option>
+                        <option value="queued">{t("tile_queued")}</option>
                         <option value="completed">{t("tile_completed")}</option>
                         <option value="attention">{t("tile_attention")}</option>
                         <option value="video">{t("filter_video")}</option>
@@ -127,12 +127,12 @@ export const ActivityList = React.memo(function ActivityList({
                         onChange={(e) => setSortBy(e.target.value as SortBy)}
                         className="bg-surface-1 border border-border-subtle rounded-md px-2.5 h-8 text-caption font-medium text-primary hover:bg-surface-2 outline-none cursor-pointer"
                     >
-                        <option value="date_desc">Newest First</option>
-                        <option value="date_asc">Oldest First</option>
-                        <option value="size_desc">Largest Size</option>
-                        <option value="size_asc">Smallest Size</option>
-                        <option value="title">Title A-Z</option>
-                        <option value="progress">Progress</option>
+                        <option value="date_desc">{t("sort_newest")}</option>
+                        <option value="date_asc">{t("sort_oldest")}</option>
+                        <option value="size_desc">{t("sort_largest")}</option>
+                        <option value="size_asc">{t("sort_smallest")}</option>
+                        <option value="title">{t("sort_title")}</option>
+                        <option value="progress">{t("sort_progress")}</option>
                     </select>
                 </div>
             </div>

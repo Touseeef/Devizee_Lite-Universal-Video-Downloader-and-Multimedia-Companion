@@ -96,7 +96,7 @@ export function VideoCard({
     setSelectedFormat,
     activeCardTask,
     onDismissProgress,
-    t: _t,
+    t,
     vm,
     isAnalyzing = false,
     existingDownloads = [],
@@ -436,12 +436,12 @@ export function VideoCard({
                                     {isAudioPreviewing ? (
                                         <>
                                             <VolumeX size={13} className="text-white animate-pulse" />
-                                            <span>Stop Audio Preview</span>
+                                            <span>{t("pause_audio")}</span>
                                         </>
                                     ) : (
                                         <>
                                             <Volume2 size={13} className="text-accent" />
-                                            <span>Play Audio Preview</span>
+                                            <span>{t("preview_audio")}</span>
                                         </>
                                     )}
                                 </button>
@@ -478,7 +478,7 @@ export function VideoCard({
                                     title="Streaming lightweight audio saves ~90% internet data compared to full video"
                                 >
                                     <Sparkles size={11} className="text-accent shrink-0" />
-                                    <span>Saves Data</span>
+                                    <span>{t("saves_data")}</span>
                                 </div>
                             </div>
 

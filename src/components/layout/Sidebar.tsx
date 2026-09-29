@@ -18,6 +18,7 @@ import { EqualizerDropdown } from "../common/EqualizerDropdown";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
 import logo from "../../assets/devizee-logo.png";
 import type { DownloadRecord, NowPlaying, TabType, PlaySource } from "../../types";
+import type { TranslationKey } from "../../lib/i18n";
 
 export function Sidebar({
     collapsed = false,
@@ -40,6 +41,7 @@ export function Sidebar({
     onSelectEqPreset,
     playSource = "none",
     previewingId = null,
+    t,
 }: {
     collapsed?: boolean;
     onToggleCollapse?: () => void;
@@ -61,6 +63,7 @@ export function Sidebar({
     onSelectEqPreset?: (presetId: string) => void;
     playSource?: PlaySource;
     previewingId?: string | null;
+    t?: (key: TranslationKey) => string;
 }) {
     const pillVisible = nowPlaying.type !== "none";
     const pillPlaying = pillVisible && nowPlaying.state === "playing";
@@ -120,14 +123,14 @@ export function Sidebar({
                     active={activeTab === "dashboard"}
                     onClick={() => handleTabClick("dashboard")}
                     icon={<LayoutDashboard size={16} />}
-                    label="Dashboard"
+                    label={t ? t("nav_dashboard") : "Dashboard"}
                     collapsed={collapsed}
                 />
                 <SidebarNavItem
                     active={activeTab === "downloads"}
                     onClick={() => handleTabClick("downloads")}
                     icon={<Download size={16} />}
-                    label="Downloads"
+                    label={t ? t("nav_downloads") : "Downloads"}
                     badge={activeCount > 0 ? activeCount : undefined}
                     collapsed={collapsed}
                 />
@@ -135,14 +138,14 @@ export function Sidebar({
                     active={activeTab === "multimedia"}
                     onClick={() => handleTabClick("multimedia")}
                     icon={<Film size={16} />}
-                    label="Multimedia"
+                    label={t ? t("nav_multimedia") : "Multimedia"}
                     collapsed={collapsed}
                 />
                 <SidebarNavItem
                     active={activeTab === "settings"}
                     onClick={() => handleTabClick("settings")}
                     icon={<SettingsIcon size={16} />}
-                    label="Settings"
+                    label={t ? t("nav_settings") : "Settings"}
                     collapsed={collapsed}
                 />
             </nav>

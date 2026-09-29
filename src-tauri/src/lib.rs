@@ -290,6 +290,8 @@ async fn fetch_video_info(
         "--no-playlist",
         "--skip-download",
         "--no-warnings",
+        "--force-ipv4",
+        "--geo-bypass",
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
@@ -350,8 +352,10 @@ async fn fetch_video_info(
     let mut audio_formats: Vec<FormatOption> = Vec::new();
 
     // -- VIDEO FORMATS (Primary + Dropdown) --
+    // Universal selector: handles both landscape (height<=X) and vertical (width<=X, e.g. TikTok/Reels)
+    // with /best failsafe so format resolution never errors out on any site.
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=1080]+bestaudio/best[height<=1080]".to_string(),
+        format_id: "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo[width<=1080]+bestaudio/best[width<=1080]/best".to_string(),
         label: "1080p (Full HD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -360,7 +364,7 @@ async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=720]+bestaudio/best[height<=720]".to_string(),
+        format_id: "bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo[width<=720]+bestaudio/best[width<=720]/best".to_string(),
         label: "720p (HD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -378,7 +382,7 @@ async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=2160]+bestaudio/best[height<=2160]".to_string(),
+        format_id: "bestvideo[height<=2160]+bestaudio/best[height<=2160]/bestvideo[width<=2160]+bestaudio/best[width<=2160]/best".to_string(),
         label: "4K (2160p Ultra HD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -387,7 +391,7 @@ async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=1440]+bestaudio/best[height<=1440]".to_string(),
+        format_id: "bestvideo[height<=1440]+bestaudio/best[height<=1440]/bestvideo[width<=1440]+bestaudio/best[width<=1440]/best".to_string(),
         label: "2K (1440p QHD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -396,7 +400,7 @@ async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=480]+bestaudio/best[height<=480]".to_string(),
+        format_id: "bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo[width<=480]+bestaudio/best[width<=480]/best".to_string(),
         label: "480p (Standard)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -405,7 +409,7 @@ async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=360]+bestaudio/best[height<=360]".to_string(),
+        format_id: "bestvideo[height<=360]+bestaudio/best[height<=360]/bestvideo[width<=360]+bestaudio/best[width<=360]/best".to_string(),
         label: "360p (Data Saver)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -1043,6 +1047,8 @@ async fn start_download(
             "--force-overwrites",
             "--no-playlist",
             "--no-warnings",
+            "--force-ipv4",
+            "--geo-bypass",
             "--concurrent-fragments",
             "4",
             "--compat-options",
@@ -1990,6 +1996,7 @@ async fn get_audio_stream_url(
         "-g",
         "--no-playlist",
         "--force-ipv4",
+        "--geo-bypass",
         "--no-warnings",
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",
@@ -2022,10 +2029,11 @@ async fn get_video_stream_url(
     let mut cmd = Command::new(&yt_dlp_path);
     cmd.args([
         "-f",
-        "best[ext=mp4]/best",
+        "best[vcodec!=none][acodec!=none][ext=mp4]/best[vcodec!=none][acodec!=none]/best[ext=mp4]/best",
         "-g",
         "--no-playlist",
         "--force-ipv4",
+        "--geo-bypass",
         "--no-warnings",
         "--extractor-args",
         "youtube:skip=dash,translated_subs,comments",
@@ -2069,6 +2077,8 @@ async fn fetch_playlist_info(
         "--playlist-end",
         "100",
         "--no-warnings",
+        "--force-ipv4",
+        "--geo-bypass",
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
@@ -2452,12 +2462,14 @@ async fn fetch_audio_bytes(
     cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.args([
         "-f",
-        "bestaudio[ext=webm]/bestaudio/best",
+        "bestaudio/best",
         "-o",
         "-",
         "--no-playlist",
         "--no-warnings",
         "--no-colors",
+        "--force-ipv4",
+        "--geo-bypass",
         "--quiet",
         "--no-part",
         "--concurrent-fragments",

@@ -1468,6 +1468,33 @@ export default function App() {
     }
   };
 
+function detectAudioMime(arr: Uint8Array): string {
+  if (arr.length >= 4) {
+    if (arr[0] === 0x1a && arr[1] === 0x45 && arr[2] === 0xdf && arr[3] === 0xa3) {
+      return "audio/webm";
+    }
+    if (arr[0] === 0x49 && arr[1] === 0x44 && arr[2] === 0x33) {
+      return "audio/mpeg";
+    }
+    if (arr[0] === 0xff && (arr[1] & 0xe0) === 0xe0) {
+      return "audio/mpeg";
+    }
+    if (arr[0] === 0x4f && arr[1] === 0x67 && arr[2] === 0x67 && arr[3] === 0x53) {
+      return "audio/ogg";
+    }
+    if (arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46) {
+      return "audio/wav";
+    }
+    if (arr[0] === 0x66 && arr[1] === 0x4c && arr[2] === 0x61 && arr[3] === 0x43) {
+      return "audio/flac";
+    }
+  }
+  if (arr.length >= 8 && arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70) {
+    return "audio/mp4";
+  }
+  return "audio/mp4";
+}
+
   // Audio preview playback handlers with instantaneous cache & seeking
   const toggleAudioPreview = async (targetUrl: string, songId: string, forceRefresh = false) => {
     unlockAudioContext();
@@ -1550,7 +1577,9 @@ export default function App() {
           `Audio fetch returned ${bytes?.length ?? 0} bytes — likely an HTTP error, not real audio.`
         );
       }
-      const blob = new Blob([new Uint8Array(bytes)], { type: "audio/webm" });
+      const u8 = new Uint8Array(bytes);
+      const mime = detectAudioMime(u8);
+      const blob = new Blob([u8], { type: mime });
       const blobUrl = URL.createObjectURL(blob);
       cacheAudioBlobUrl(songId, blobUrl);
       if (audioRef.current) {
@@ -2577,6 +2606,7 @@ export default function App() {
           onSelectEqPreset={handleEqPresetChange}
           playSource={playSource}
           previewingId={previewingId}
+          t={t}
         />
       )}
     >
