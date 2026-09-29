@@ -13,7 +13,7 @@ Built with Tauri v2, Rust, React, and powered by `yt-dlp` + `ffmpeg`.
 
 ---
 
-![Devizee Lite Demo](docs/demo.gif)
+![Devizee Lite Demo](.github/assets/demo.gif)
 
 ---
 
@@ -51,7 +51,7 @@ Most download tools force a trade-off: pay for IDM, tolerate adware-adjacent "fr
 - Windows-only (macOS/Linux support is not planned for Lite; a future AIO release may add it)
 - Installer is unsigned — Windows SmartScreen will warn on first run (click "More info" → "Run anyway")
 - No BitTorrent support yet (planned for Devizee AIO)
-- No browser extension yet (planned for Devizee AIO)
+- Companion browser extension currently in companion preview (Chrome, Brave, Edge, Firefox via local IPC bridge)
 
 See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 
@@ -104,17 +104,93 @@ See [COMPARISON.md](COMPARISON.md) for a deeper breakdown.
 
 ---
 
-## Screenshots
+## Product Showcase: Features That Sell
 
-> *(Add screenshots to `/docs/screenshots/` and update the paths below)*
+### ⚡ 1. Universal Media Ingestion & Smart Format Chips
+> **Download any video or song in maximum quality without ads, speed caps, or deceptive pop-up traps.**
 
-| Dashboard | Multimedia Hub |
-|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Multimedia](docs/screenshots/multimedia.png) |
+Paste a link from YouTube, TikTok, Instagram, Twitter/X, Facebook, Twitch, or 1,000+ sites. Devizee instantly analyzes the stream, displaying direct resolution chips (4K, 1440p, 1080p, 60fps), audio/video codecs (AV1, VP9, Opus), and estimated file sizes before you start.
 
-| Downloads Queue | Settings — Sound & EQ |
-|---|---|
-| ![Downloads](docs/screenshots/downloads.png) | ![EQ](docs/screenshots/eq.png) |
+![Universal Media Ingestion](.github/assets/showcase-ingestion.gif)
+
+- **1,000+ platforms supported** out of the box via sandboxed `yt-dlp`.
+- **Zero speed throttling** — downloads saturate your full network bandwidth.
+- **Audio extraction in 1-click** to MP3 (320 kbps), M4A, FLAC (lossless), WAV, or Opus.
+
+---
+
+### ✂️ 2. Pre-Download Time-Range Trimmer
+> **Grab only what you need. Stop downloading 2-hour podcasts just for a 30-second clip.**
+
+Drag the visual start and end sliders or type exact timestamps to clip any section before downloading. Devizee instructs the engine to fetch only that specific range, saving gigabytes of bandwidth and minutes of waiting.
+
+![Pre-Download Trimmer](.github/assets/showcase-trimmer.gif)
+
+- **Engine-level range fetching** (`--download-sections`) — no need to download the full file and trim it in heavy video editing software.
+- High-precision scrubbing down to the exact second.
+
+---
+
+### 🎛️ 3. Built-in Multimedia Hub & 8-Band Hardware EQ
+> **Play your downloads immediately. No need to install VLC or external media players.**
+
+Devizee includes a complete local audio and video player with real-time waveform visualizers, playlist queues, and an 8-band hardware-accelerated equalizer with one-click presets (Bass Boost, EDM, Rock, Vocal, Movie).
+
+![Multimedia Hub & EQ](.github/assets/showcase-player.png)
+
+- **8-Band Biquad Peaking Filter** (60 Hz to 15 kHz) with ±12 dB gain control.
+- **Hardware audio output selector** — route audio directly to your DAC, headphones, or external speakers via `setSinkId`.
+- **0ms YouTube Previews** — instant inline thumbnail playback with zero extraction wait.
+
+---
+
+### 💬 4. Subtitle Downloader & In-Player Caption Tracks
+> **Keep dialogue accessible in any language.**
+
+Automatically download embedded or auto-generated subtitle tracks (SRT / VTT). When playing videos in Devizee's integrated theater mode, toggle subtitles on or off and switch between language tracks on the fly.
+
+![Subtitles and Theater Player](.github/assets/showcase-subtitles.png)
+
+- Fullscreen theater mode with **Aspect Ratio toggling** (Fit ↔ Fill / Ultrawide).
+- Multi-language subtitle tracks saved directly alongside your media files.
+
+---
+
+### 📋 5. Batch Playlist Management & URL Import
+> **Queue entire albums, channels, or link collections in seconds.**
+
+Paste a playlist link to inspect every track with individual format controls and selective check-boxes, or bulk-import dozens of links via the Batch Links modal or `.txt` file import.
+
+![Batch Downloads](.github/assets/showcase-batch.png)
+
+- Concurrency limiter keeps disk usage smooth (3 simultaneous downloads with queued backlog).
+- Auto-resume and retry on dropped connections or expired CDN tokens.
+
+---
+
+### 🎨 6. Four Curated Visual Themes
+> **A desktop app designed for modern workspaces.**
+
+Switch instantly between 4 hand-crafted themes tailored for any lighting condition:
+- **Signature**: Refined Plum & Rose accents.
+- **Frost**: Slate-dark professional contrast.
+- **OLED**: 100% pitch-black for OLED displays.
+- **Light**: Crisp, high-contrast daytime mode.
+
+![Theme Showcase](.github/assets/showcase-themes.png)
+
+---
+
+### 🛡️ 7. One-Click Engine Self-Updater & Zero Telemetry
+> **Always compatible with changing streaming platforms, 100% private.**
+
+When YouTube or TikTok changes their streaming algorithms, update your core `yt-dlp` engine directly from **Settings → Advanced** in seconds — no need to reinstall the entire application.
+
+![Engine Self-Updater](.github/assets/showcase-updater.png)
+
+- **Zero telemetry, zero analytics, zero pings** — your downloads stay strictly between your PC and the host site.
+- **Automated SHA-256 fingerprint verification** protects against binary tampering.
+- **Windows Job Object sandboxing** prevents zombie background processes.
 
 ---
 
