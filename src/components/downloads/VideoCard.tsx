@@ -302,7 +302,7 @@ export function VideoCard({
             const ext = selectedFormat?.ext || (isAudioSelected ? "mp3" : "mp4");
             const isAud = !!selectedFormat?.is_audio_only;
             const label = selectedFormat?.label || (isAud ? "Audio (MP3)" : "Best Video");
-            await handleStartDownload(fmtId, ext, isAud, videoInfo, label, undefined, customSaveFolder || undefined, includeSubtitles);
+            await handleStartDownload(fmtId, ext, isAud, undefined, label, undefined, customSaveFolder || undefined, includeSubtitles);
         } finally {
             setIsStartingDownload(false);
         }

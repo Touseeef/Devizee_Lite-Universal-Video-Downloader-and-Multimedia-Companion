@@ -49,6 +49,7 @@ export type DownloadRecord = {
     speed?: string;
     eta?: string;
     format: string;
+    format_id?: string;
     date_added: number;
     hidden: boolean;
     file_size?: number | null;

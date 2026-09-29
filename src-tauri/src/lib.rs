@@ -1135,7 +1135,8 @@ async fn start_download(
             "--concurrent-fragments",
             "4",
             "--compat-options",
-            "no-youtube-unavailable-videos",
+            "no-youtube-unavailable-videos,no-abort-on-error",
+            "--no-abort-on-error",
             // SEC-7 (defense-in-depth): sanitise expanded template values so that
             // untrusted video titles cannot introduce path separators into filenames.
             "--restrict-filenames",
@@ -1206,19 +1207,29 @@ async fn start_download(
             cmd.args(["-f", &format_id, "--merge-output-format", &ext]);
         }
 
-        if !is_audio_only && download_subtitles.unwrap_or(false) {
+        if !is_audio_only && download_subtitles.unwrap_or(false) && download_sections.is_none() {
             let langs = subtitle_languages
                 .as_deref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
                 .unwrap_or("all");
-            cmd.args([
-                "--write-subs",
-                "--write-auto-subs",
-                "--sub-langs",
-                langs,
-                "--embed-subs",
-            ]);
+
+            if langs == "all" {
+                // When "all" is requested, only write official/manual subtitles.
+                // Requesting 100+ machine-translated auto-subs triggers YouTube HTTP 429 Too Many Requests.
+                cmd.args([
+                    "--write-subs",
+                    "--embed-subs",
+                ]);
+            } else {
+                cmd.args([
+                    "--write-subs",
+                    "--write-auto-subs",
+                    "--sub-langs",
+                    langs,
+                    "--embed-subs",
+                ]);
+            }
         }
 
         if let Some(ref sec) = download_sections {

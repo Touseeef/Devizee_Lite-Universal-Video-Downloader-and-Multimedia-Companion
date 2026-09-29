@@ -2049,8 +2049,14 @@ function detectAudioMime(arr: Uint8Array): string {
     if (!info) return;
 
     // 1. Define clip trimming status FIRST so displayFormat can use it
-    const isClipTrimming = !specificInfo && isTrimming && trimStart && trimEnd;
-    const downloadSectionsArg = isClipTrimming ? `*${trimStart}-${trimEnd}` : null;
+    const isMainVideo = !specificInfo || specificInfo.id === videoInfo?.id || specificInfo.url === videoInfo?.url;
+    const startSecs = parseTimeToSeconds(trimStart);
+    const endSecs = parseTimeToSeconds(trimEnd);
+    const hasValidTrimRange = isMainVideo && isTrimming && endSecs > startSecs;
+
+    const downloadSectionsArg = hasValidTrimRange
+      ? `*${formatSecondsToTime(startSecs, true)}-${formatSecondsToTime(endSecs, true)}`
+      : null;
 
     // 2. Compute display formats (Enhanced with Step 2's 1080p/720p fallbacks)
     const fallbackLabel = isAudio
@@ -2062,12 +2068,12 @@ function detectAudioMime(arr: Uint8Array): string {
           : `${ext.toUpperCase()} Video`;
 
     const baseDisplayFormat = formatLabel || fallbackLabel;
-    const displayFormat = isClipTrimming
+    const displayFormat = hasValidTrimRange
       ? `${baseDisplayFormat} [Clip ${trimStart}-${trimEnd}]`
       : baseDisplayFormat;
 
     // 3. Duplicate check logic (W2-8: capture the record for the enhanced dialog)
-    if (!duplicateAction) {
+    if (!duplicateAction && !hasValidTrimRange) {
       const existing = history.find(
         (h) =>
           h.url === info.url &&
@@ -2119,6 +2125,7 @@ function detectAudioMime(arr: Uint8Array): string {
       status: "starting",
       percent: 0,
       format: displayFormat,
+      format_id: formatId,
       date_added: Date.now() / 1000,
       hidden: false,
     };
@@ -2126,7 +2133,7 @@ function detectAudioMime(arr: Uint8Array): string {
     setHistory(prev => [newRecord, ...prev]);
 
     // Crucial Fix for Step 6: DO NOT WIPE videoInfo! Transition button to live status
-    if (!specificInfo) {
+    if (isMainVideo) {
       setActiveCardTaskId(taskId);
       setIsTrimming(false);
     }
@@ -2206,7 +2213,17 @@ function detectAudioMime(arr: Uint8Array): string {
     const isAudio = isAudioFormat(record.format);
     const extMatch = record.format.match(/\(([A-Z0-9]+)\)/i);
     const ext = extMatch ? extMatch[1].toLowerCase() : (isAudio ? "mp3" : "mp4");
-    const formatId = isAudio ? "bestaudio/best" : (record.format.includes("[") ? record.format : "bestvideo+bestaudio/best");
+    const clipMatch = record.format.match(/\[Clip\s+([^-\]]+)-([^\]]+)\]/i);
+    let retrySections: string | null = null;
+    if (clipMatch) {
+      const sSec = parseTimeToSeconds(clipMatch[1]);
+      const eSec = parseTimeToSeconds(clipMatch[2]);
+      if (eSec > sSec) {
+        retrySections = `*${formatSecondsToTime(sSec, true)}-${formatSecondsToTime(eSec, true)}`;
+      }
+    }
+    const cleanFormat = record.format.replace(/\[Clip\s+[^\]]+\]/gi, "").trim();
+    const formatId = record.format_id || (isAudio ? "bestaudio/best" : (cleanFormat.includes("[") ? cleanFormat : "bestvideo+bestaudio/best"));
 
     setHistory(prev => prev.map(r => r.id === record.id ? {
       ...r,
@@ -2250,7 +2267,7 @@ function detectAudioMime(arr: Uint8Array): string {
         proxy: proxyArg,
         customFlags: settings.customFlags ? settings.customFlags : null,
         scanAntivirus: settings.scanAntivirus,
-        downloadSections: null,
+        downloadSections: retrySections,
         duplicateAction: "overwrite",
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
