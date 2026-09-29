@@ -2961,6 +2961,138 @@ fn delete_history_file(
     db::hide_download(&conn, &id).map_err(|e| e.to_string())
 }
 
+/// Spawns a lightweight local HTTP server bound exclusively to 127.0.0.1:42421.
+/// Allows the Devizee browser extension to communicate seamlessly with zero configuration.
+fn start_local_http_bridge(app_handle: tauri::AppHandle, port: u16) {
+    let addr = ("127.0.0.1", port);
+    let listener = match std::net::TcpListener::bind(addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[Devizee Bridge] Local port {} unavailable (already running or in use): {}", port, e);
+            return;
+        }
+    };
+
+    println!("[Devizee Bridge] Listening on http://127.0.0.1:{}", port);
+
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            if let Ok(mut stream) = stream {
+                let app = app_handle.clone();
+                std::thread::spawn(move || {
+                    handle_bridge_connection(&mut stream, &app);
+                });
+            }
+        }
+    });
+}
+
+fn handle_bridge_connection(stream: &mut std::net::TcpStream, app: &tauri::AppHandle) {
+    use std::io::{Read, Write};
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(1500)));
+
+    let mut buf = [0u8; 8192];
+    let bytes_read = match stream.read(&mut buf) {
+        Ok(n) if n > 0 => n,
+        _ => return,
+    };
+
+    let req = String::from_utf8_lossy(&buf[..bytes_read]);
+    let mut lines = req.lines();
+    let request_line = match lines.next() {
+        Some(l) => l,
+        None => return,
+    };
+
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or("");
+    let path = parts.next().unwrap_or("");
+
+    let cors_headers = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\nConnection: close";
+
+    if method == "OPTIONS" {
+        let resp = format!("HTTP/1.1 204 No Content\r\n{}\r\n\r\n", cors_headers);
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    if path == "/status" || path == "/ping" {
+        let body = serde_json::json!({
+            "status": "ok",
+            "app": "Devizee Lite",
+            "port": 42421,
+            "version": "0.5.0"
+        }).to_string();
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            body.len(),
+            cors_headers,
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    if method == "POST" && path.starts_with("/download") {
+        let mut target_url: Option<String> = None;
+
+        if let Some(body_start) = req.find("\r\n\r\n") {
+            let body = &req[body_start + 4..];
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+                if let Some(u) = v.get("url").and_then(|x| x.as_str()) {
+                    target_url = Some(u.to_string());
+                }
+            }
+        }
+
+        if let Some(url) = target_url {
+            let clean_url = url.trim().to_string();
+            if clean_url.starts_with("http://") || clean_url.starts_with("https://") {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.unminimize();
+                    let _ = win.set_focus();
+                }
+                let _ = app.emit("open-url", clean_url);
+
+                let body = serde_json::json!({"status": "queued"}).to_string();
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+                    body.len(),
+                    cors_headers,
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.flush();
+                return;
+            }
+        }
+
+        let body = serde_json::json!({"error": "invalid url"}).to_string();
+        let resp = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            body.len(),
+            cors_headers,
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    let body = "Not Found";
+    let resp = format!(
+        "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+        body.len(),
+        cors_headers,
+        body
+    );
+    let _ = stream.write_all(resp.as_bytes());
+    let _ = stream.flush();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -3283,6 +3415,9 @@ pub fn run() {
                     }
                 });
             }
+
+            // Start local loopback HTTP bridge for browser extension communication (port 42421)
+            start_local_http_bridge(app.handle().clone(), 42421);
 
             Ok(())
         })
