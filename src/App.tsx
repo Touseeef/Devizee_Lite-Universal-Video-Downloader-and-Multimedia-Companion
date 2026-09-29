@@ -5,7 +5,7 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, KeyRound, ExternalLink, ShieldAlert, X, Sparkles } from "lucide-react";
 
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -44,7 +44,7 @@ import { DuplicateDialog } from "./components/common/DuplicateDialog";
 import type { DuplicateDialogState } from "./components/common/DuplicateDialog";
 import { RefreshUrlDialog } from "./components/common/RefreshUrlDialog";
 import type { RefreshUrlDialogState } from "./components/common/RefreshUrlDialog";
-import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
+import { revealItemInDir, openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { AppShell } from "./components/layout/AppShell";
 import { Sidebar } from "./components/layout/Sidebar";
 import { ClipboardHud } from "./components/hud/ClipboardHud";
@@ -81,6 +81,8 @@ export default function App() {
     confirmVariant?: "danger" | "accent";
     onConfirm: () => void;
   } | null>(null);
+
+  const [installedBrowsers, setInstalledBrowsers] = useState<string[]>([]);
 
   // First-run onboarding guide
   const [isWelcomeOpen, setIsWelcomeOpen] = useState(() => {
@@ -280,6 +282,13 @@ export default function App() {
       navigator.mediaDevices?.removeEventListener?.("devicechange", refreshAudioDevices);
     };
   }, []);
+
+  useEffect(() => {
+    if (isHud) return;
+    invoke<string[]>("get_installed_browsers")
+      .then((b) => setInstalledBrowsers(b || []))
+      .catch(() => setInstalledBrowsers([]));
+  }, [isHud]);
 
   const handleDeviceChange = async (deviceId: string) => {
     setSelectedAudioDevice(deviceId);
@@ -1750,7 +1759,7 @@ function detectAudioMime(arr: Uint8Array): string {
   };
 
   // URL Analysis Logic - Robust for single videos, YouTube mixes, playlists, and keyword search
-  async function analyzeUrl(rawInput: string) {
+  async function analyzeUrl(rawInput: string, browserOverride?: string) {
     const clean = rawInput.trim();
     if (!clean) return;
 
@@ -1797,6 +1806,8 @@ function detectAudioMime(arr: Uint8Array): string {
     setVideoStreamUrl(null);
     setIsVideoLoading(false);
     setIsFetching(true);
+
+    const effectiveBrowser = browserOverride || (settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null);
 
     const listMatch = clean.match(/[?&]list=([^&]+)/);
     const listId = listMatch ? listMatch[1] : null;
@@ -1850,7 +1861,7 @@ function detectAudioMime(arr: Uint8Array): string {
           const videoClean = `https://www.youtube.com/watch?v=${videoId}`;
           const info = await invoke<VideoInfo>("fetch_video_info", {
             url: videoClean,
-            cookies_from_browser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
+            cookies_from_browser: effectiveBrowser,
             allow_insecure_ssl: settings.allowInsecureSSL || false,
           });
           setVideoInfo(info);
@@ -1862,7 +1873,7 @@ function detectAudioMime(arr: Uint8Array): string {
       } else if (videoId) {
         const info = await invoke<VideoInfo>("fetch_video_info", {
           url: clean,
-          cookies_from_browser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
+          cookies_from_browser: effectiveBrowser,
           allow_insecure_ssl: settings.allowInsecureSSL || false,
         });
         setVideoInfo(info);
@@ -1872,7 +1883,7 @@ function detectAudioMime(arr: Uint8Array): string {
       } else {
         const info = await invoke<VideoInfo>("fetch_video_info", {
           url: clean,
-          cookies_from_browser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
+          cookies_from_browser: effectiveBrowser,
           allow_insecure_ssl: settings.allowInsecureSSL || false,
         });
         setVideoInfo(info);
@@ -1883,9 +1894,9 @@ function detectAudioMime(arr: Uint8Array): string {
     } catch (err: any) {
       const errStr = err ? err.toString() : "Unknown error";
       if (errStr.includes("DRM_PROTECTED")) {
-        setFetchError("🔒 DRM Protected: This media or streaming platform uses hardware-level DRM encryption (Widevine / PlayReady). Devizee complies with copyright standards and cannot download from subscription streaming services.");
-      } else if (errStr.includes("Sign in to confirm")) {
-        setFetchError("🔑 Sign-In Required: This video requires age verification or an account login. Enable 'YouTube Cookies from Browser' in Settings → Advanced or relay from the Devizee Browser Extension.");
+        setFetchError("DRM_PROTECTED: This media or streaming platform uses hardware-level DRM encryption (Widevine / PlayReady). Devizee complies with copyright standards and cannot download from subscription streaming services.");
+      } else if (errStr.startsWith("AUTH_REQUIRED:") || errStr.includes("AUTH_REQUIRED") || errStr.includes("Sign in to confirm") || errStr.includes("login required") || errStr.includes("requires login") || errStr.includes("Private video")) {
+        setFetchError(errStr.startsWith("AUTH_REQUIRED:") ? errStr : `AUTH_REQUIRED: ${errStr}`);
       } else {
         setFetchError(errStr);
       }
@@ -1893,6 +1904,12 @@ function detectAudioMime(arr: Uint8Array): string {
       setIsFetching(false);
     }
   }
+
+  const handleQuickAuthWithBrowser = (browserId: string) => {
+    updateSetting("cookiesFromBrowser", browserId);
+    setFetchError("");
+    analyzeUrl(url, browserId);
+  };
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2705,12 +2722,134 @@ function detectAudioMime(arr: Uint8Array): string {
           />
 
           {fetchError && (
-            <div className="bg-status-danger-subtle p-3.5 rounded-md flex items-start gap-2.5 text-status-danger animate-in fade-in duration-fast">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              <div className="text-body-sm font-medium">
-                <span className="font-semibold">{t("analysis_failed")}: </span>{fetchError}
+            fetchError.startsWith("AUTH_REQUIRED:") ? (
+              <div className="bg-surface-2 border border-amber-500/30 rounded-lg p-5 shadow-lg animate-in fade-in duration-200">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 shrink-0 mt-0.5">
+                      <KeyRound size={20} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h4 className="text-body font-semibold text-primary flex items-center gap-2">
+                        Account Sign-In or Age Verification Required
+                      </h4>
+                      <p className="text-body-sm text-secondary leading-relaxed">
+                        This video requires an account login, age verification, or active session cookies (YouTube age-gate, Instagram, TikTok, Twitter/X, Reddit, etc.).
+                        Devizee can securely reuse your active browser session directly on this PC — no passwords or credentials are ever requested or stored.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setFetchError("")}
+                    className="p-1 text-muted hover:text-primary rounded-md transition-colors"
+                    title="Dismiss"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border-subtle flex flex-wrap items-center gap-2">
+                  <span className="text-caption font-semibold text-secondary mr-1">
+                    One-Click Connect:
+                  </span>
+                  {installedBrowsers.length > 0 ? (
+                    installedBrowsers.map((b) => {
+                      const name = b === "chrome" ? "Chrome"
+                        : b === "edge" ? "Edge"
+                        : b === "brave" ? "Brave"
+                        : b === "firefox" ? "Firefox"
+                        : b === "opera" ? "Opera"
+                        : b === "vivaldi" ? "Vivaldi" : b;
+                      return (
+                        <button
+                          key={b}
+                          onClick={() => handleQuickAuthWithBrowser(b)}
+                          className="px-3 py-1.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-caption font-semibold transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5"
+                        >
+                          <Sparkles size={13} />
+                          Use {name} Session
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleQuickAuthWithBrowser("chrome")}
+                        className="px-3 py-1.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-caption font-semibold transition-all hover:scale-[1.02] flex items-center gap-1.5"
+                      >
+                        <Sparkles size={13} />
+                        Use Chrome Session
+                      </button>
+                      <button
+                        onClick={() => handleQuickAuthWithBrowser("edge")}
+                        className="px-3 py-1.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-caption font-semibold transition-all hover:scale-[1.02] flex items-center gap-1.5"
+                      >
+                        <Sparkles size={13} />
+                        Use Edge Session
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      if (url) openUrl(url).catch(() => {});
+                    }}
+                    className="px-3 py-1.5 rounded-md bg-surface-3 hover:bg-surface-elevated border border-border-subtle text-secondary hover:text-primary text-caption font-medium transition-colors flex items-center gap-1.5 ml-auto"
+                  >
+                    <ExternalLink size={13} />
+                    Open in Browser
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("settings")}
+                    className="px-3 py-1.5 rounded-md text-caption text-muted hover:text-secondary font-medium transition-colors underline"
+                  >
+                    Settings
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : fetchError.startsWith("DRM_PROTECTED:") ? (
+              <div className="bg-surface-2 border border-red-500/30 rounded-lg p-5 shadow-lg animate-in fade-in duration-200">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-red-500/10 text-red-400 shrink-0 mt-0.5">
+                      <ShieldAlert size={20} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h4 className="text-body font-semibold text-primary">
+                        DRM Protected Media (Widevine / PlayReady)
+                      </h4>
+                      <p className="text-body-sm text-secondary leading-relaxed">
+                        This content or platform uses hardware-level Digital Rights Management (DRM) encryption.
+                        In accordance with copyright compliance and security standards, Devizee cannot download protected streams from subscription services (e.g., Netflix, Disney+, Spotify).
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setFetchError("")}
+                    className="p-1 text-muted hover:text-primary rounded-md transition-colors"
+                    title="Dismiss"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-status-danger-subtle p-3.5 rounded-md flex items-start justify-between gap-2.5 text-status-danger animate-in fade-in duration-fast">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                  <div className="text-body-sm font-medium">
+                    <span className="font-semibold">{t("analysis_failed")}: </span>{fetchError}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setFetchError("")}
+                  className="p-0.5 text-status-danger hover:opacity-75 rounded transition-opacity"
+                  title="Dismiss"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )
           )}
 
           {/* YouTube Keyword Search Results Grid */}

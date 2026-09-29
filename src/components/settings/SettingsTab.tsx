@@ -849,8 +849,8 @@ export function SettingsTab({
                     {/* Advanced & Engine */}
                     <SettingsSection title={t("settings_advanced")} icon={<Cpu size={16} />}>
                         <SettingRow
-                            title="YouTube Cookies from Browser"
-                            desc="Uses your browser's login to access age-restricted and bot-detected videos. Requires the browser to be installed on this PC and logged into YouTube."
+                            title="Browser Session Sync (All Sites)"
+                            desc="Uses your desktop browser's active login session to resolve age-restricted videos, private content, and bot verifications across YouTube, Instagram, TikTok, Twitter/X, Reddit, and more. No credentials or passwords are ever stored."
                         >
                             <select
                                 value={settings.cookiesFromBrowser || "none"}

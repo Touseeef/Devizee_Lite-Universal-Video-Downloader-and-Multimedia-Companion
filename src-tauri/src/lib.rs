@@ -350,8 +350,21 @@ async fn fetch_video_info(
             .unwrap_or(&stderr)
             .to_string();
 
-        if cleaned_error.to_lowercase().contains("drm protected") {
+        let err_lower = cleaned_error.to_lowercase();
+        if err_lower.contains("drm protected") {
             return Err("DRM_PROTECTED: This media is protected by Digital Rights Management (DRM) and cannot be downloaded.".to_string());
+        } else if err_lower.contains("sign in to confirm")
+            || err_lower.contains("login required")
+            || err_lower.contains("requires login")
+            || err_lower.contains("private video")
+            || err_lower.contains("this video is private")
+            || err_lower.contains("only available to registered users")
+            || err_lower.contains("age verification")
+            || err_lower.contains("cookies are needed")
+            || err_lower.contains("401 unauthorized")
+            || (err_lower.contains("403 forbidden") && (url.contains("instagram.com") || url.contains("tiktok.com") || url.contains("twitter.com") || url.contains("x.com")))
+        {
+            return Err(format!("AUTH_REQUIRED: {}", cleaned_error));
         }
 
         return Err(cleaned_error);
@@ -2995,6 +3008,42 @@ fn delete_history_file(
     db::hide_download(&conn, &id).map_err(|e| e.to_string())
 }
 
+/// Detects installed web browsers on the user's PC for one-click session authentication
+#[tauri::command]
+fn get_installed_browsers() -> Vec<String> {
+    let mut browsers = Vec::new();
+    let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let app_data = std::env::var("APPDATA").unwrap_or_default();
+
+    if !local_app_data.is_empty() {
+        let p = std::path::Path::new(&local_app_data);
+        if p.join("Google").join("Chrome").join("User Data").exists() {
+            browsers.push("chrome".to_string());
+        }
+        if p.join("Microsoft").join("Edge").join("User Data").exists() {
+            browsers.push("edge".to_string());
+        }
+        if p.join("BraveSoftware").join("Brave-Browser").join("User Data").exists() {
+            browsers.push("brave".to_string());
+        }
+        if p.join("Vivaldi").join("User Data").exists() {
+            browsers.push("vivaldi".to_string());
+        }
+    }
+
+    if !app_data.is_empty() {
+        let p = std::path::Path::new(&app_data);
+        if p.join("Mozilla").join("Firefox").join("Profiles").exists() {
+            browsers.push("firefox".to_string());
+        }
+        if p.join("Opera Software").join("Opera Stable").exists() {
+            browsers.push("opera".to_string());
+        }
+    }
+
+    browsers
+}
+
 /// Spawns a lightweight local HTTP server bound exclusively to 127.0.0.1:42421.
 /// Allows the Devizee browser extension to communicate seamlessly with zero configuration.
 fn start_local_http_bridge(app_handle: tauri::AppHandle, port: u16) {
@@ -3572,6 +3621,7 @@ pub fn run() {
             get_engine_info,
             check_engine_update,
             update_engine,
+            get_installed_browsers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
