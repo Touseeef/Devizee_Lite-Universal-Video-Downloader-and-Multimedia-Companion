@@ -27,7 +27,7 @@ export function UrlInput({
     setUrl: (v: string) => void;
     isFetching: boolean;
     isSearchingYoutube: boolean;
-    onAnalyze: (e: React.FormEvent) => void;
+    onAnalyze: (e?: React.FormEvent, directUrl?: string) => void;
     onClear: () => void;
     onImportTxtLines: (lines: string[]) => void;
     placeholder: string;
@@ -54,10 +54,7 @@ export function UrlInput({
         if (text) {
             setUrl(text);
             if (/^https?:\/\//i.test(text)) {
-                setTimeout(() => {
-                    const synthetic = { preventDefault: () => {} } as React.FormEvent;
-                    onAnalyze(synthetic);
-                }, 30);
+                onAnalyze(undefined, text);
             }
         }
     };

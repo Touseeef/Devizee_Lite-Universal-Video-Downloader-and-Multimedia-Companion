@@ -30,7 +30,7 @@ export const formatSecondsToTime = (
     const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
     if (forceHours || h > 0) {
-        return `${h}:${m < 10 ? "0" : ""}${m}:${sec < 10 ? "0" : ""}${sec}`;
+        return `${h < 10 ? "0" : ""}${h}:${m < 10 ? "0" : ""}${m}:${sec < 10 ? "0" : ""}${sec}`;
     }
     return `${m < 10 ? "0" : ""}${m}:${sec < 10 ? "0" : ""}${sec}`;
 };

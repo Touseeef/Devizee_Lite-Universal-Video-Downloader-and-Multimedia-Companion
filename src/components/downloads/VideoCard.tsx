@@ -25,8 +25,9 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { formatFileSize, formatEstimatedSize } from "../../lib/format";
+import { formatFileSize, formatEstimatedSize, formatSecondsToTime, parseTimeToSeconds } from "../../lib/format";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
+import { TimeSegmentInput } from "./TimeSegmentInput";
 import type { DownloadRecord, FormatOption, VideoInfo } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
 
@@ -237,6 +238,36 @@ export function VideoCard({
         }
     }, [videoInfo.id, videoInfo.has_subtitles]);
 
+    const toggleSubtitles = () => {
+        if (hasSubtitles === false) return;
+        const nextState = !includeSubtitles;
+        setIncludeSubtitles(nextState);
+
+        if (videoElementRef.current) {
+            const tracks = videoElementRef.current.textTracks;
+            for (let i = 0; i < tracks.length; i++) {
+                tracks[i].mode = nextState ? "showing" : "disabled";
+            }
+        }
+        try {
+            if (nextState) {
+                sendIframeCommand("loadModule", ["captions"]);
+                sendIframeCommand("setOption", ["captions", "track", { languageCode: "en" }]);
+            } else {
+                sendIframeCommand("unloadModule", ["captions"]);
+            }
+        } catch (_) {}
+    };
+
+    useEffect(() => {
+        if (videoElementRef.current) {
+            const tracks = videoElementRef.current.textTracks;
+            for (let i = 0; i < tracks.length; i++) {
+                tracks[i].mode = includeSubtitles ? "showing" : "disabled";
+            }
+        }
+    }, [includeSubtitles, customSubtitleUrl, activeVideoPlaying]);
+
     const handleRefreshStream = async () => {
         setIsRefreshingStream(true);
         setVideoPlaybackError(false);
@@ -421,11 +452,29 @@ export function VideoCard({
                                 <div className="absolute top-2 right-2 flex items-center gap-1.5 z-30 bg-black/75 backdrop-blur-md p-1 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
                                         type="button"
-                                        onClick={handleAddSubtitleTrack}
-                                        className={`w-7 h-7 rounded-md ${customSubtitleUrl ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20 text-white"} flex items-center justify-center transition-colors cursor-pointer`}
-                                        title={customSubtitleName ? `Subtitle: ${customSubtitleName}` : "Add Subtitles (.srt, .vtt)"}
+                                        onClick={toggleSubtitles}
+                                        disabled={hasSubtitles === false}
+                                        className={`w-7 h-7 rounded-md ${
+                                            includeSubtitles ? "bg-accent text-white" : "bg-white/10 hover:bg-white/20 text-white"
+                                        } flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed`}
+                                        title={
+                                            hasSubtitles === false
+                                                ? "No subtitles available for this video"
+                                                : includeSubtitles
+                                                    ? "Subtitles Enabled: Captions are visible in player and will automatically download & embed into the video. Click to disable."
+                                                    : "Subtitles Disabled: Captions are hidden and will not be downloaded. Click to enable automatic subtitle download."
+                                        }
                                     >
                                         <Subtitles size={13} />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleAddSubtitleTrack}
+                                        className={`px-1.5 h-7 rounded-md ${customSubtitleUrl ? "bg-accent/40 text-white border border-accent" : "bg-white/10 hover:bg-white/20 text-white/80"} flex items-center justify-center transition-colors cursor-pointer text-[10px] font-mono`}
+                                        title={customSubtitleName ? `Custom track: ${customSubtitleName}` : "Load custom local subtitle file (.srt, .vtt)"}
+                                    >
+                                        +SRT
                                     </button>
 
                                     <button
@@ -887,61 +936,67 @@ export function VideoCard({
 
                     {/* Optional Trimming Bar */}
                     {isTrimming && (
-                        <div className="p-3 bg-surface-2/60 rounded-xl border border-border-subtle space-y-2 animate-in fade-in duration-fast">
+                        <div className="p-3.5 bg-surface-2/60 rounded-xl border border-border-subtle space-y-3 animate-in fade-in duration-fast">
                             <div className="flex items-center justify-between text-caption font-semibold text-primary">
-                                <span className="flex items-center gap-1 text-accent">
-                                    <Scissors size={13} />
+                                <span className="flex items-center gap-1.5 text-accent">
+                                    <Scissors size={14} />
                                     <span>Download Specific Section</span>
                                 </span>
-                                <span className="text-[11px] font-mono text-tertiary">HH:MM:SS</span>
+                                <span className="text-[11px] font-mono text-tertiary">
+                                    Total: {videoInfo.duration_string || formatSecondsToTime(videoInfo.duration || 0, true)}
+                                </span>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] uppercase font-bold text-tertiary">Start Time</label>
-                                    <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1 space-y-1.5">
+                                    <TimeSegmentInput
+                                        label="Start Time"
+                                        value={trimStart}
+                                        onChange={setTrimStart}
+                                        maxDurationSeconds={videoInfo.duration}
+                                        maxSecondsLimit={parseTimeToSeconds(trimEnd) > 0 ? parseTimeToSeconds(trimEnd) - 1 : (videoInfo.duration || 86399)}
+                                    />
+                                    <div className="flex items-center justify-center gap-1 mt-1">
                                         <button
                                             type="button"
                                             onClick={() => adjustTrimTimestamp(trimStart, setTrimStart, -5)}
-                                            className="px-1.5 py-1 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary"
+                                            className="px-2 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary hover:bg-surface-1 transition-colors cursor-pointer"
+                                            title="Step back 5 seconds"
                                         >
                                             -5s
                                         </button>
-                                        <input
-                                            type="text"
-                                            value={trimStart}
-                                            onChange={(e) => setTrimStart(e.target.value)}
-                                            className="w-full bg-surface-1 border border-border-subtle rounded-md px-2 py-1 text-caption font-mono text-primary text-center outline-none focus:border-accent"
-                                        />
                                         <button
                                             type="button"
                                             onClick={() => adjustTrimTimestamp(trimStart, setTrimStart, 5)}
-                                            className="px-1.5 py-1 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary"
+                                            className="px-2 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary hover:bg-surface-1 transition-colors cursor-pointer"
+                                            title="Step forward 5 seconds"
                                         >
                                             +5s
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="flex-1 space-y-1">
-                                    <label className="text-[10px] uppercase font-bold text-tertiary">End Time</label>
-                                    <div className="flex items-center gap-1">
+                                <div className="flex-1 space-y-1.5">
+                                    <TimeSegmentInput
+                                        label="End Time"
+                                        value={trimEnd}
+                                        onChange={setTrimEnd}
+                                        maxDurationSeconds={videoInfo.duration}
+                                        minSeconds={parseTimeToSeconds(trimStart) + 1}
+                                    />
+                                    <div className="flex items-center justify-center gap-1 mt-1">
                                         <button
                                             type="button"
                                             onClick={() => adjustTrimTimestamp(trimEnd, setTrimEnd, -5)}
-                                            className="px-1.5 py-1 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary"
+                                            className="px-2 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary hover:bg-surface-1 transition-colors cursor-pointer"
+                                            title="Step back 5 seconds"
                                         >
                                             -5s
                                         </button>
-                                        <input
-                                            type="text"
-                                            value={trimEnd}
-                                            onChange={(e) => setTrimEnd(e.target.value)}
-                                            className="w-full bg-surface-1 border border-border-subtle rounded-md px-2 py-1 text-caption font-mono text-primary text-center outline-none focus:border-accent"
-                                        />
                                         <button
                                             type="button"
                                             onClick={() => adjustTrimTimestamp(trimEnd, setTrimEnd, 5)}
-                                            className="px-1.5 py-1 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary"
+                                            className="px-2 py-0.5 rounded bg-surface-3 text-[10px] font-mono text-secondary hover:text-primary hover:bg-surface-1 transition-colors cursor-pointer"
+                                            title="Step forward 5 seconds"
                                         >
                                             +5s
                                         </button>
@@ -996,30 +1051,26 @@ export function VideoCard({
                         {!isAudioSelected && (
                             <button
                                 type="button"
-                                onClick={() => {
-                                    if (hasSubtitles !== false) {
-                                        setIncludeSubtitles(!includeSubtitles);
-                                    }
-                                }}
+                                onClick={toggleSubtitles}
                                 disabled={isStartingDownload || hasSubtitles === false}
                                 className={`px-3 py-3 rounded-xl border transition-all shadow-2xs shrink-0 flex items-center gap-1.5 text-xs font-semibold ${
                                     hasSubtitles === false
                                         ? "bg-surface-2/60 border-border-subtle/50 text-tertiary/60 opacity-60 cursor-not-allowed"
                                         : includeSubtitles
-                                            ? "bg-accent/10 border-accent/40 text-accent hover:bg-accent/20 cursor-pointer"
+                                            ? "bg-accent/15 border-accent text-accent hover:bg-accent/25 cursor-pointer shadow-xs"
                                             : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-tertiary cursor-pointer"
                                 }`}
                                 title={
                                     hasSubtitles === false
                                         ? "No subtitles or captions available for this video on the source platform"
                                         : includeSubtitles
-                                            ? `Subtitles enabled (${videoInfo.subtitle_languages?.length ? `${videoInfo.subtitle_languages.length} languages detected` : "platform captions"}). Click to disable.`
-                                            : "Subtitles disabled. Click to embed subtitles into downloaded video."
+                                            ? "Subtitles Enabled: Captions are visible in player and will automatically download & embed into the video. Click to disable."
+                                            : "Subtitles Disabled: Captions are hidden and will not be downloaded. Click to enable automatic subtitle download."
                                 }
                             >
                                 <Subtitles size={15} />
                                 <span className="hidden sm:inline">
-                                    {hasSubtitles === false ? "No Subs" : includeSubtitles ? "Subs: On" : "Subs: Off"}
+                                    {hasSubtitles === false ? "No Subs" : includeSubtitles ? "Subs: On (Auto-Download)" : "Subs: Off"}
                                 </span>
                             </button>
                         )}

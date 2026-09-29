@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -1112,6 +1112,7 @@ async fn start_download(
         // download. Drop fires automatically when the closure exits,
         // whether by completion, error, or cancellation.
         let _permit = _permit;
+        let download_start_time = std::time::Instant::now();
         let mut cmd = Command::new(&yt_dlp_path);
         let progress_template = "DEVIZEE_PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s";
 
@@ -1130,8 +1131,6 @@ async fn start_download(
             "--no-warnings",
             "--force-ipv4",
             "--geo-bypass",
-            "--user-agent",
-            BROWSER_USER_AGENT,
             "--concurrent-fragments",
             "4",
             "--compat-options",
@@ -1186,7 +1185,7 @@ async fn start_download(
                 "ba/b"
             };
 
-            let effective_fmt = if format_id.contains("bestaudio") || format_id.is_empty() {
+            let effective_fmt = if format_id.contains("bestaudio") || format_id.is_empty() || format_id.contains('(') || format_id.contains(' ') {
                 audio_selector
             } else {
                 &format_id
@@ -1204,7 +1203,14 @@ async fn start_download(
                 "--embed-thumbnail",
             ]);
         } else {
-            cmd.args(["-f", &format_id, "--merge-output-format", &ext]);
+            let sanitized_fmt = if format_id.contains('(') || format_id.contains(' ') || format_id.is_empty() {
+                "bestvideo+bestaudio/best".to_string()
+            } else if !format_id.contains('/') && !format_id.contains("best") {
+                format!("{}/bestvideo+bestaudio/best", format_id)
+            } else {
+                format_id.clone()
+            };
+            cmd.args(["-f", &sanitized_fmt, "--merge-output-format", &ext]);
         }
 
         if !is_audio_only && download_subtitles.unwrap_or(false) && download_sections.is_none() {
@@ -1449,13 +1455,17 @@ async fn start_download(
         );
 
         // ─── F-11: Inactivity watchdog ───
-        // If yt-dlp emits nothing on stdout/stderr for 45 consecutive seconds
-        // (after a 45s grace window for metadata + connection handshake), assume
-        // the socket is dead and kill the process tree. Without this, a hung
-        // yt-dlp on a silent TCP connection leaks its worker thread forever.
+        // If yt-dlp emits nothing on stdout/stderr for an extended period,
+        // assume the socket is dead and kill the process tree.
+        // During active network download: 90s timeout.
+        // During ffmpeg post-processing / audio conversion / format muxing: 300s (5m) timeout.
         let last_activity = Arc::new(Mutex::new(std::time::Instant::now()));
         let last_activity_stderr = last_activity.clone();
         let last_activity_stdout = last_activity.clone();
+        let is_postprocessing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let is_postprocessing_watchdog = is_postprocessing.clone();
+        let is_postprocessing_stderr = is_postprocessing.clone();
+        let is_postprocessing_stdout = is_postprocessing.clone();
         let watchdog_alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let watchdog_alive_clone = watchdog_alive.clone();
         let watchdog_pid = pid;
@@ -1464,7 +1474,6 @@ async fn start_download(
 
         std::thread::spawn(move || {
             const CHECK_INTERVAL_SECS: u64 = 15;
-            const INACTIVITY_LIMIT_SECS: u64 = 45;
             const WATCHDOG_GRACE_SECS: u64 = 45;
 
             // Grace period: metadata extraction + first TCP handshake can
@@ -1485,10 +1494,16 @@ async fn start_download(
                     Err(_) => continue,
                 };
 
-                if since_last >= INACTIVITY_LIMIT_SECS {
+                let inactivity_limit = if is_postprocessing_watchdog.load(std::sync::atomic::Ordering::SeqCst) {
+                    300 // 5 minutes during muxing / audio conversion / post-processing
+                } else {
+                    90  // 90 seconds during network downloading
+                };
+
+                if since_last >= inactivity_limit {
                     eprintln!(
-                        "[Devizee Watchdog] No output from PID {} for {}s — killing (task {})",
-                        watchdog_pid, since_last, watchdog_task_id
+                        "[Devizee Watchdog] No output from PID {} for {}s (postprocessing: {}) — killing (task {})",
+                        watchdog_pid, since_last, is_postprocessing_watchdog.load(std::sync::atomic::Ordering::SeqCst), watchdog_task_id
                     );
 
                     // Bug 5: verify image name before kill to prevent PID-recycle hits.
@@ -1563,26 +1578,36 @@ async fn start_download(
             // log display. Older lines are dropped.
             const MAX_STDERR_LINES: usize = 1000;
             let mut reader = BufReader::new(stderr);
-            let mut buf = Vec::new();
-            while let Ok(n) = reader.read_until(b'\n', &mut buf) {
+            let mut chunk = [0u8; 4096];
+            let mut line_buf = Vec::new();
+            while let Ok(n) = reader.read(&mut chunk) {
                 if n == 0 {
                     break;
                 }
-                // F-11: touch activity timestamp on every stderr line
+                // F-11: touch activity timestamp on ANY stderr bytes (including \r carriage returns from ffmpeg)
                 if let Ok(mut t) = last_activity_stderr.lock() {
                     *t = std::time::Instant::now();
                 }
-                let line = String::from_utf8_lossy(&buf).trim_end().to_string();
-                buf.clear();
-                if !line.is_empty() {
-                    let mut logs = error_logs_clone.lock().unwrap();
-                    logs.push(line);
-                    if logs.len() > MAX_STDERR_LINES {
-                        // Drop the oldest 200 lines when we hit the cap. This
-                        // is cheaper than removing one at a time and keeps
-                        // recent context intact.
-                        let excess = logs.len() - MAX_STDERR_LINES;
-                        logs.drain(0..excess);
+
+                for &byte in &chunk[..n] {
+                    if byte == b'\n' || byte == b'\r' {
+                        if !line_buf.is_empty() {
+                            let line = String::from_utf8_lossy(&line_buf).trim().to_string();
+                            line_buf.clear();
+                            if !line.is_empty() {
+                                if line.contains("Postprocessing") || line.contains("ExtractAudio") || line.contains("Merger") {
+                                    is_postprocessing_stderr.store(true, std::sync::atomic::Ordering::SeqCst);
+                                }
+                                let mut logs = error_logs_clone.lock().unwrap();
+                                logs.push(line);
+                                if logs.len() > MAX_STDERR_LINES {
+                                    let excess = logs.len() - MAX_STDERR_LINES;
+                                    logs.drain(0..excess);
+                                }
+                            }
+                        }
+                    } else {
+                        line_buf.push(byte);
                     }
                 }
             }
@@ -1625,6 +1650,10 @@ async fn start_download(
                 let line = String::from_utf8_lossy(&buf).trim_end().to_string();
                 buf.clear();
 
+                if line.contains("Merging formats into") || line.contains("Postprocessing") || line.contains("[ExtractAudio]") || line.contains("[Merger]") {
+                    is_postprocessing_stdout.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+
                 if line.contains("format(s)") && line.contains("Downloading") {
                     if let Some(pos) = line.find(" format(s)") {
                         if let Some(space_pos) = line[..pos].rfind(' ') {
@@ -1656,7 +1685,7 @@ async fn start_download(
                         let percent_str = parts[0].trim().replace('%', "");
                         let raw_percent: f32 = percent_str.parse().unwrap_or(0.0);
                         let speed = parts[1].trim().to_string();
-                        let eta = parts[2].trim().to_string();
+                        let raw_eta = parts[2].trim().to_string();
 
                         // Multi-stream DASH smooth scaling:
                         // Accurately tracks actual stream count (e.g. YouTube DASH video+audio = 2, TikTok single = 1)
@@ -1672,6 +1701,20 @@ async fn start_download(
                             }
                         } else {
                             raw_percent.min(99.0)
+                        };
+
+                        let eta = if raw_eta != "NA" && !raw_eta.is_empty() && raw_eta.to_lowercase() != "none" && raw_eta != "--" {
+                            raw_eta
+                        } else if percent > 1.0 {
+                            let elapsed = download_start_time.elapsed().as_secs_f32();
+                            let remaining_secs = ((elapsed * (100.0 - percent)) / percent).round() as u64;
+                            if remaining_secs > 3600 {
+                                format!("{:02}:{:02}:{:02}", remaining_secs / 3600, (remaining_secs % 3600) / 60, remaining_secs % 60)
+                            } else {
+                                format!("{:02}:{:02}", remaining_secs / 60, remaining_secs % 60)
+                            }
+                        } else {
+                            "Calculating...".to_string()
                         };
 
                         let status = DownloadStatus::Downloading;
@@ -1716,6 +1759,7 @@ async fn start_download(
                         }
                     }
                 } else if line.contains("Merging formats into") {
+                    is_postprocessing_stdout.store(true, std::sync::atomic::Ordering::SeqCst);
                     if let Some(idx) = line.find("Merging formats into") {
                         let fp = line[idx + "Merging formats into".len()..]
                             .trim()

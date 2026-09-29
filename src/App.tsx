@@ -1294,6 +1294,17 @@ export default function App() {
           console.log(
             `[Auto-Retry] Scheduling attempt ${attempts + 1}/${AUTO_RETRY_MAX} for ${p.task_id} in ${backoffMs}ms`
           );
+          setHistory((prev) =>
+            prev.map((rec) =>
+              rec.id === p.task_id
+                ? {
+                    ...rec,
+                    speed: `Auto-restarting (${attempts + 1}/${AUTO_RETRY_MAX})...`,
+                    eta: `${Math.round(backoffMs / 1000)}s`,
+                  }
+                : rec
+            )
+          );
           setTimeout(() => {
             const rec = historyRef.current.find((h) => h.id === p.task_id);
             if (rec && handleRetryDownloadRef.current) {
@@ -1301,9 +1312,6 @@ export default function App() {
               handleRetryDownloadRef.current(rec);
             }
           }, backoffMs);
-          // Do NOT update state, do NOT push to errorBatch, do NOT notify.
-          // The record stays as "downloading" until the retry flips it back
-          // through Queued → Starting → Downloading.
           return;
         }
         console.log(
@@ -1911,9 +1919,12 @@ function detectAudioMime(arr: Uint8Array): string {
     analyzeUrl(url, browserId);
   };
 
-  const handleAnalyze = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await analyzeUrl(url);
+  const handleAnalyze = async (e?: React.FormEvent, directUrl?: string) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const targetUrl = directUrl !== undefined ? directUrl : url;
+    if (targetUrl && targetUrl.trim()) {
+      await analyzeUrl(targetUrl.trim());
+    }
   };
 
   const handleImportTxtLines = async (lines: string[]) => {

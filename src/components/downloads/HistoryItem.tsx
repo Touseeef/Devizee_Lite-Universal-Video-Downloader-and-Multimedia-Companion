@@ -174,7 +174,7 @@ export const HistoryItem = React.memo(function HistoryItem({
                                             {record.speed}
                                         </span>
                                     )}
-                                    {isOnline && record.eta && record.eta !== "--" && record.eta.trim() !== "" && record.status === "downloading" && (
+                                    {isOnline && record.eta && record.eta !== "--" && record.eta !== "NA" && record.eta.toLowerCase() !== "none" && record.eta.trim() !== "" && record.status === "downloading" && (
                                         <span className="text-caption text-tertiary font-mono text-[10px]">
                                             ETA {record.eta}
                                         </span>
