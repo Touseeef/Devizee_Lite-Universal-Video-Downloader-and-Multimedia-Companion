@@ -64,6 +64,11 @@ export const ActivityList = React.memo(function ActivityList({
     onCancel?: (id: string) => void;
     onRefreshUrl?: (record: DownloadRecord) => void;
 }) {
+    const [visibleLimit, setVisibleLimit] = React.useState(50);
+    const visibleRecords = React.useMemo(() => {
+        return sortedHistory.slice(0, visibleLimit);
+    }, [sortedHistory, visibleLimit]);
+
     const allSelected =
         sortedHistory.length > 0 &&
         selectedHistoryItems.size === sortedHistory.length;
@@ -168,7 +173,7 @@ export const ActivityList = React.memo(function ActivityList({
 
                     {/* Rows */}
                     <div>
-                        {sortedHistory.map((record) => (
+                        {visibleRecords.map((record) => (
                             <div
                                 key={record.id}
                                 className="flex items-stretch border-b border-border-subtle last:border-b-0 transition-colors hover:bg-surface-2/40"
@@ -208,6 +213,17 @@ export const ActivityList = React.memo(function ActivityList({
                             </div>
                         ))}
                     </div>
+
+                    {sortedHistory.length > visibleLimit && (
+                        <div className="p-3 text-center border-t border-border-subtle bg-surface-2/30">
+                            <button
+                                onClick={() => setVisibleLimit((prev) => prev + 50)}
+                                className="px-4 py-1.5 text-xs font-semibold text-accent hover:text-accent/80 transition-colors cursor-pointer"
+                            >
+                                Load More ({sortedHistory.length - visibleLimit} remaining)
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

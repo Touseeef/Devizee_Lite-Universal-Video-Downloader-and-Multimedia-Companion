@@ -965,10 +965,12 @@ async fn start_download(
     }
 
     // Edge Case: Windows 260-char MAX_PATH protection.
-    // If the template expands to a path longer than 240 chars, yt-dlp or Windows file creation
-    // can fail with OS Error 206/3/123. We cap title expansion in yt-dlp to 100 bytes max.
+    // Dynamically calculate available space based on the full download_dir length.
+    // Windows MAX_PATH is 260. We reserve 40 chars for ID, format ext, and temporary .part/.fXXX suffixes.
     let safe_template = if template.contains("%(title)s") {
-        template.replace("%(title)s", "%(title).100B")
+        let dir_len = download_dir.to_string_lossy().len();
+        let max_title_len = 240usize.saturating_sub(dir_len).clamp(30, 100);
+        template.replace("%(title)s", &format!("%(title).{}B", max_title_len))
     } else {
         template.to_string()
     };
