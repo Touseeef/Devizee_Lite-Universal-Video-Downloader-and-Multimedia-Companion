@@ -410,37 +410,42 @@ export function VideoCard({
                                             )}
                                         </video>
                                         {videoPlaybackError && (
-                                            <div className="absolute inset-0 z-30 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center animate-in fade-in duration-fast rounded-xl overflow-hidden">
-                                                <AlertCircle size={24} className="text-status-warning mb-1.5" />
-                                                <p className="text-white text-caption font-semibold">Video Stream Token Expired or Protected</p>
-                                                <p className="text-secondary text-[11px] max-w-xs mt-1">Platform tokens (TikTok/Instagram) are protected. You can refresh, preview audio, or download the full media.</p>
-                                                <div className="flex items-center gap-2 mt-3 flex-wrap justify-center">
+                                            <div className="absolute inset-0 z-30 bg-black/92 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-fast rounded-xl overflow-hidden">
+                                                <div className="w-10 h-10 rounded-full bg-status-warning/15 text-status-warning flex items-center justify-center mb-2.5">
+                                                    <AlertCircle size={22} />
+                                                </div>
+                                                <p className="text-white text-body-sm font-semibold">Direct Stream Protected by Platform</p>
+                                                <p className="text-secondary text-[11.5px] max-w-sm mt-1.5 leading-relaxed">
+                                                    Twitter/X, TikTok, and Instagram CDNs block external players from hotlink streaming. You can download the full video with 1-click to watch it in Devizee's built-in Multimedia Player.
+                                                </p>
+                                                <div className="flex items-center gap-2.5 mt-4 flex-wrap justify-center">
                                                     <button
                                                         type="button"
-                                                        onClick={handleRefreshStream}
-                                                        className="px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                                                        title="Refresh video stream link"
+                                                        onClick={onDownloadClick}
+                                                        disabled={isStartingDownload}
+                                                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md hover:scale-[1.02] active:scale-[0.98]"
+                                                        title="Download complete video to watch in Multimedia Hub"
                                                     >
-                                                        <RotateCw size={12} className={isRefreshingStream ? "animate-spin" : ""} />
-                                                        <span>Refresh Link</span>
+                                                        <Download size={14} className="stroke-[2.5]" />
+                                                        <span>Download & Watch</span>
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleAudioPreview(videoInfo.url, videoInfo.id)}
-                                                        className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                                                        title="Preview audio directly without video token limitations"
+                                                        className="px-3.5 py-2 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                        title="Preview audio track directly"
                                                     >
-                                                        <Volume2 size={12} className="text-accent" />
+                                                        <Volume2 size={13} className="text-accent" />
                                                         <span>Audio Preview</span>
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={onDownloadClick}
-                                                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                                                        title="Download video to watch in Multimedia Player"
+                                                        onClick={handleRefreshStream}
+                                                        className="px-3 py-2 rounded-xl bg-surface-2/80 hover:bg-surface-3 border border-border-subtle/80 text-secondary hover:text-primary text-caption font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                                                        title="Re-fetch CDN stream URL"
                                                     >
-                                                        <Download size={12} />
-                                                        <span>Download</span>
+                                                        <RotateCw size={12} className={isRefreshingStream ? "animate-spin" : ""} />
+                                                        <span>Retry Stream</span>
                                                     </button>
                                                 </div>
                                             </div>
