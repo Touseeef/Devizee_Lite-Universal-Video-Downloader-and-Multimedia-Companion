@@ -12,7 +12,7 @@ export function TitleBar({
     onCloseClick?: () => void;
 }) {
     const [isMaximized, setIsMaximized] = useState(false);
-    const [appVersion, setAppVersion] = useState("0.5.1");
+    const [appVersion, setAppVersion] = useState("0.5.2");
     const appWindow = getCurrentWindow();
 
     useEffect(() => {
@@ -116,7 +116,7 @@ export function TitleBar({
                     Devizee Lite
                 </span>
                 <span className="text-[10px] font-mono text-tertiary px-1.5 py-0.2 rounded bg-surface-2 border border-border-subtle/40">
-                    {appVersion ? `v${appVersion}` : "v0.5.1"}
+                    {appVersion ? `v${appVersion}` : "v0.5.2"}
                 </span>
             </div>
 

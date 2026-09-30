@@ -2636,10 +2636,13 @@ function detectAudioMime(arr: Uint8Array): string {
 
   const handlePauseSelected = async () => {
     for (const id of selectedHistoryItems) {
-      userPausedTaskIds.current.add(id);
-      try {
-        await invoke("pause_download", { taskId: id });
-      } catch { }
+      const rec = history.find(h => h.id === id);
+      if (rec && (rec.status === "downloading" || rec.status === "starting" || rec.status === "fetching_metadata" || rec.status === "muxing")) {
+        userPausedTaskIds.current.add(id);
+        try {
+          await invoke("pause_download", { taskId: id });
+        } catch { }
+      }
     }
     loadHistory();
   };
@@ -2655,9 +2658,39 @@ function detectAudioMime(arr: Uint8Array): string {
 
   const handleCancelSelected = async () => {
     for (const id of selectedHistoryItems) {
+      const rec = history.find(h => h.id === id);
+      if (rec && (rec.status === "downloading" || rec.status === "starting" || rec.status === "queued" || rec.status === "interrupted")) {
+        try {
+          await invoke("cancel_download", { taskId: id });
+        } catch { }
+      }
+    }
+    setSelectedHistoryItems(new Set());
+    loadHistory();
+  };
+
+  const handleRemoveSelected = async () => {
+    for (const id of selectedHistoryItems) {
       try {
-        await invoke("cancel_download", { taskId: id });
+        await invoke("remove_history_record", { id });
       } catch { }
+    }
+    setSelectedHistoryItems(new Set());
+    loadHistory();
+  };
+
+  const handleDeleteSelected = async () => {
+    for (const id of selectedHistoryItems) {
+      const rec = history.find(h => h.id === id);
+      if (rec) {
+        try {
+          if (rec.file_path) {
+            await invoke("delete_file_and_record", { id: rec.id, filePath: rec.file_path });
+          } else {
+            await invoke("remove_history_record", { id: rec.id });
+          }
+        } catch { }
+      }
     }
     setSelectedHistoryItems(new Set());
     loadHistory();
@@ -2910,6 +2943,7 @@ function detectAudioMime(arr: Uint8Array): string {
               setSelectedFormat={setSelectedFormat}
               activeCardTask={activeCardTask}
               onDismissProgress={() => setActiveCardTaskId(null)}
+              onClose={resetInput}
               t={t}
               isAnalyzing={isFetching}
               existingDownloads={
@@ -3150,6 +3184,8 @@ function detectAudioMime(arr: Uint8Array): string {
               setMultimediaTargetRecord(record);
               setActiveTab("multimedia");
             }}
+            onRemoveSelected={handleRemoveSelected}
+            onDeleteSelected={handleDeleteSelected}
           />
         </div>
 

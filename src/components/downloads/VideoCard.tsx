@@ -17,11 +17,11 @@ import {
     RotateCcw,
     RotateCw,
     Scissors,
-    Sparkles,
     Subtitles,
     Volume2,
     VolumeX,
     X,
+    Zap,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -106,6 +106,7 @@ export function VideoCard({
     existingDownloads = [],
     onRevealInFolder,
     onOpenExistingFile,
+    onClose,
 }: {
     videoInfo: VideoInfo;
     settings: any;
@@ -122,6 +123,7 @@ export function VideoCard({
     onRevealInFolder?: (path: string | null) => void;
     /** W2-9: double-click handler for library chips — open in default player */
     onOpenExistingFile?: (path: string | null) => void;
+    onClose?: () => void;
 }) {
     const {
         activeVideoPlaying,
@@ -350,6 +352,16 @@ export function VideoCard({
 
     return (
         <div className="bg-surface-1 rounded-2xl p-5 border border-border-subtle relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-fast shadow-sm space-y-4">
+            {onClose && (
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="absolute top-3 right-3 p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface-2 transition-colors z-20 cursor-pointer"
+                    title="Close card"
+                >
+                    <X size={16} />
+                </button>
+            )}
             {/* 2-Column Inspector Layout: col-span-5 for video, col-span-7 for settings */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* COLUMN 1: Visual Media Inspection Box & Audio Preview */}
@@ -600,7 +612,7 @@ export function VideoCard({
                                     className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-subtle/50 text-accent text-[11px] font-medium border border-accent/20 select-none shadow-2xs"
                                     title="Streaming lightweight audio saves ~90% internet data compared to full video"
                                 >
-                                    <Sparkles size={11} className="text-accent shrink-0" />
+                                    <Zap size={11} className="text-accent shrink-0" />
                                     <span>{t("saves_data")}</span>
                                 </div>
                             </div>

@@ -2,11 +2,11 @@ import { useState } from "react";
 import {
     AlertTriangle,
     ArrowDownToLine,
-    Ban,
     Pause,
     Play,
     X,
     XCircle,
+    Trash2,
 } from "lucide-react";
 import type { DownloadRecord } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
@@ -63,6 +63,8 @@ export function DownloadsTab({
     onResumeSelected,
     onRefreshUrl,
     onPlayMedia,
+    onRemoveSelected,
+    onDeleteSelected,
 }: {
     t: (key: TranslationKey) => string;
     isOnline: boolean;
@@ -101,6 +103,8 @@ export function DownloadsTab({
     onResumeSelected?: () => void;
     onRefreshUrl?: (record: DownloadRecord) => void;
     onPlayMedia?: (record: DownloadRecord) => void;
+    onRemoveSelected?: () => void;
+    onDeleteSelected?: () => void;
 }) {
     // F-36: Dismissible interrupted-downloads recovery banner.
     const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -172,42 +176,43 @@ export function DownloadsTab({
 
             {/* Global Queue Action Toolbar */}
             <div className="bg-surface-1 rounded-xl p-3 border border-border-subtle flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={onPauseAll}
-                        className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
-                        title="Pause all running downloads"
-                    >
-                        <Pause size={13} />
-                        <span>Pause All</span>
-                    </button>
+                {selectedHistoryItems.size === 0 ? (
+                    /* No Selection: Show bulk "All" actions */
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onPauseAll}
+                            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
+                            title="Pause all running downloads"
+                        >
+                            <Pause size={13} />
+                            <span>Pause All</span>
+                        </button>
 
-                    <button
-                        type="button"
-                        onClick={onResumeAll}
-                        className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
-                        title="Resume all queued and paused downloads"
-                    >
-                        <Play size={13} fill="currentColor" />
-                        <span>Resume All</span>
-                    </button>
+                        <button
+                            type="button"
+                            onClick={onResumeAll}
+                            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
+                            title="Resume all queued and paused downloads"
+                        >
+                            <Play size={13} fill="currentColor" />
+                            <span>Resume All</span>
+                        </button>
 
-                    <button
-                        type="button"
-                        onClick={onCancelAll}
-                        className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-status-danger-subtle text-caption font-semibold text-secondary hover:text-status-danger flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
-                        title="Cancel all active tasks"
-                    >
-                        <XCircle size={13} />
-                        <span>Cancel All</span>
-                    </button>
-                </div>
-
-                {/* Selected Tasks Actions */}
-                {selectedHistoryItems.size > 0 && (
+                        <button
+                            type="button"
+                            onClick={onCancelAll}
+                            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-status-danger-subtle text-caption font-semibold text-secondary hover:text-status-danger flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
+                            title="Cancel all active tasks"
+                        >
+                            <XCircle size={13} />
+                            <span>Cancel All</span>
+                        </button>
+                    </div>
+                ) : (
+                    /* Items Selected: Show contextual "Selected" actions */
                     <div className="flex flex-wrap items-center gap-2 animate-in fade-in duration-fast">
-                        <span className="text-caption font-semibold text-accent pr-1">
+                        <span className="text-caption font-bold text-accent pr-1">
                             {selectedHistoryItems.size} selected
                         </span>
 
@@ -216,10 +221,10 @@ export function DownloadsTab({
                                 type="button"
                                 onClick={onPauseSelected}
                                 className="px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
-                                title="Pause selected downloads"
+                                title="Pause selected active downloads"
                             >
                                 <Pause size={13} />
-                                <span>Pause Selected</span>
+                                <span>Pause</span>
                             </button>
                         )}
 
@@ -228,10 +233,10 @@ export function DownloadsTab({
                                 type="button"
                                 onClick={onResumeSelected}
                                 className="px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
-                                title="Resume selected downloads"
+                                title="Resume selected paused/errored downloads"
                             >
                                 <Play size={13} fill="currentColor" />
-                                <span>Resume Selected</span>
+                                <span>Resume</span>
                             </button>
                         )}
 
@@ -239,13 +244,46 @@ export function DownloadsTab({
                             <button
                                 type="button"
                                 onClick={onCancelSelected}
-                                className="px-2.5 py-1.5 rounded-lg bg-status-danger text-white text-caption font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer hover:bg-status-danger/90 transition-colors"
-                                title="Cancel selected downloads"
+                                className="px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-status-danger-subtle border border-border-subtle text-caption font-semibold text-secondary hover:text-status-danger flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                                title="Cancel selected active downloads"
                             >
-                                <Ban size={13} />
-                                <span>Cancel Selected</span>
+                                <XCircle size={13} />
+                                <span>Cancel</span>
                             </button>
                         )}
+
+                        {onRemoveSelected && (
+                            <button
+                                type="button"
+                                onClick={onRemoveSelected}
+                                className="px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                                title="Remove selected items from history"
+                            >
+                                <Trash2 size={13} />
+                                <span>Remove</span>
+                            </button>
+                        )}
+
+                        {onDeleteSelected && (
+                            <button
+                                type="button"
+                                onClick={onDeleteSelected}
+                                className="px-2.5 py-1.5 rounded-lg bg-status-danger text-white text-caption font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer hover:bg-status-danger/90 transition-colors"
+                                title="Delete selected files from disk and remove from history"
+                            >
+                                <Trash2 size={13} />
+                                <span>Delete Files</span>
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={() => setSelectedHistoryItems(new Set())}
+                            className="px-2 py-1.5 rounded-lg text-caption font-medium text-secondary hover:text-primary cursor-pointer transition-colors"
+                            title="Clear selection"
+                        >
+                            <span>Clear</span>
+                        </button>
                     </div>
                 )}
             </div>

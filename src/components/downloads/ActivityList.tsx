@@ -118,28 +118,28 @@ export const ActivityList = React.memo(function ActivityList({
                     <select
                         value={queueFilter}
                         onChange={(e) => setQueueFilter(e.target.value as QueueFilter)}
-                        className="bg-surface-1 border border-border-subtle rounded-md px-2.5 h-8 text-caption font-medium text-primary hover:bg-surface-2 outline-none cursor-pointer"
+                        className="h-8 px-3 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-primary border border-border-subtle transition-colors cursor-pointer appearance-none outline-none focus:ring-1 focus:ring-accent"
                     >
-                        <option value="all">{t("filter_all")}</option>
-                        <option value="active">{t("filter_active")}</option>
-                        <option value="queued">{t("tile_queued")}</option>
-                        <option value="completed">{t("tile_completed")}</option>
-                        <option value="attention">{t("tile_attention")}</option>
-                        <option value="video">{t("filter_video")}</option>
-                        <option value="audio">{t("filter_audio")}</option>
+                        <option className="bg-surface-2 text-primary" value="all">{t("filter_all")}</option>
+                        <option className="bg-surface-2 text-primary" value="active">{t("filter_active")}</option>
+                        <option className="bg-surface-2 text-primary" value="queued">{t("tile_queued")}</option>
+                        <option className="bg-surface-2 text-primary" value="completed">{t("tile_completed")}</option>
+                        <option className="bg-surface-2 text-primary" value="attention">{t("tile_attention")}</option>
+                        <option className="bg-surface-2 text-primary" value="video">{t("filter_video")}</option>
+                        <option className="bg-surface-2 text-primary" value="audio">{t("filter_audio")}</option>
                     </select>
 
                     <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as SortBy)}
-                        className="bg-surface-1 border border-border-subtle rounded-md px-2.5 h-8 text-caption font-medium text-primary hover:bg-surface-2 outline-none cursor-pointer"
+                        className="h-8 px-3 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-primary border border-border-subtle transition-colors cursor-pointer appearance-none outline-none focus:ring-1 focus:ring-accent"
                     >
-                        <option value="date_desc">{t("sort_newest")}</option>
-                        <option value="date_asc">{t("sort_oldest")}</option>
-                        <option value="size_desc">{t("sort_largest")}</option>
-                        <option value="size_asc">{t("sort_smallest")}</option>
-                        <option value="title">{t("sort_title")}</option>
-                        <option value="progress">{t("sort_progress")}</option>
+                        <option className="bg-surface-2 text-primary" value="date_desc">{t("sort_newest")}</option>
+                        <option className="bg-surface-2 text-primary" value="date_asc">{t("sort_oldest")}</option>
+                        <option className="bg-surface-2 text-primary" value="size_desc">{t("sort_largest")}</option>
+                        <option className="bg-surface-2 text-primary" value="size_asc">{t("sort_smallest")}</option>
+                        <option className="bg-surface-2 text-primary" value="title">{t("sort_title")}</option>
+                        <option className="bg-surface-2 text-primary" value="progress">{t("sort_progress")}</option>
                     </select>
                 </div>
             </div>

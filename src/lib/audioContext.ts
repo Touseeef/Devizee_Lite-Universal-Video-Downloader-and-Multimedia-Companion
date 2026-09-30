@@ -105,6 +105,12 @@ export function attachEqualizerToMedia(element: HTMLMediaElement): boolean {
         elementFilterChains.set(element, filters);
         allActiveFilterChains.add(filters);
 
+        // Clean up when the media element is removed from DOM
+        const cleanup = () => {
+            allActiveFilterChains.delete(filters);
+        };
+        element.addEventListener("emptied", cleanup, { once: true });
+
         console.log("[Devizee EQ] Attached 8-band EQ");
         return true;
     } catch (e) {
@@ -121,16 +127,27 @@ export function setGlobalEqualizerGains(gains: number[]) {
     const ctx = globalAudioState.ctx;
     const now = ctx ? ctx.currentTime : 0;
 
+    // Clean up orphaned filter chains before iterating
+    const toRemove: BiquadFilterNode[][] = [];
     allActiveFilterChains.forEach((filters) => {
-        filters.forEach((filter, idx) => {
-            const val = gains[idx] ?? 0;
-            if (ctx) {
-                filter.gain.setTargetAtTime(val, now, 0.03);
-            } else {
-                filter.gain.value = val;
-            }
-        });
+        try {
+            filters.forEach((filter, idx) => {
+                const val = gains[idx] ?? 0;
+                if (ctx) {
+                    filter.gain.setTargetAtTime(val, now, 0.03);
+                } else {
+                    filter.gain.value = val;
+                }
+            });
+        } catch {
+            // Filter chain is orphaned/disconnected — mark for removal
+            toRemove.push(filters);
+        }
     });
+    // Remove orphaned chains
+    for (const chain of toRemove) {
+        allActiveFilterChains.delete(chain);
+    }
 }
 
 export function applyEqualizerPreset(presetId: string): EqPreset {

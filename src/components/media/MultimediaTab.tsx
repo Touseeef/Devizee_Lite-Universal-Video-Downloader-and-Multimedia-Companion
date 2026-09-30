@@ -830,7 +830,7 @@ export function MultimediaTab({
 
                             {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover) */}
                             {isFullscreen && (
-                                <div className="absolute bottom-0 inset-x-0 z-40 p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <div className="absolute bottom-0 inset-x-0 z-40 px-5 pt-4 pb-8 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                                     {/* Fullscreen Scrubber */}
                                     <div className="flex items-center gap-3 w-full">
                                         <span className="text-[11px] font-mono text-white/70 w-12 text-left">
