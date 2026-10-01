@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+    AlertCircle,
     CheckSquare,
     Download,
     ListPlus,
@@ -101,6 +102,37 @@ export function PlaylistPanel({
     ];
     const VIDEO_PRESETS = ALL_PRESETS.filter((p) => !p.isAudio);
     const AUDIO_PRESETS = ALL_PRESETS.filter((p) => p.isAudio);
+
+    const RESOLUTION_RANKS: Record<string, number> = {
+        "4k": 2160,
+        "2160p": 2160,
+        "1440p": 1440,
+        "1080p": 1080,
+        "720p": 720,
+        "480p": 480,
+        "360p": 360,
+    };
+
+    const getKnownMaxResolution = (entryId: string): { label: string; height: number } | null => {
+        const matching = history.filter(
+            (h) => (h.url.includes(entryId) || h.id.startsWith(entryId)) && h.status === "completed"
+        );
+        let maxHeight = 0;
+        let maxLabel = "";
+        for (const h of matching) {
+            const m = h.format.toLowerCase();
+            for (const [key, height] of Object.entries(RESOLUTION_RANKS)) {
+                if (m.includes(key) && height > maxHeight) {
+                    maxHeight = height;
+                    maxLabel = key.toUpperCase();
+                }
+            }
+        }
+        if (maxHeight > 0) {
+            return { label: maxLabel, height: maxHeight };
+        }
+        return null;
+    };
 
     const [itemPresetIds, setItemPresetIds] = useState<Map<string, string>>(new Map());
     const [globalPreset, setGlobalPreset] = useState("1080p");
@@ -243,6 +275,16 @@ export function PlaylistPanel({
                                 </span>
                             )}
 
+                            {(globalPreset === "4k" || globalPreset === "1440p") && (
+                                <span
+                                    className="text-[10px] text-amber-400/90 flex items-center gap-1 font-medium bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 cursor-help"
+                                    title="Source videos without 4K support will automatically download at their highest available resolution (e.g. 1080p)"
+                                >
+                                    <AlertCircle size={10} className="shrink-0" />
+                                    <span>Non-{globalPreset.toUpperCase()} fallback to best</span>
+                                </span>
+                            )}
+
                             <button
                                 type="button"
                                 disabled={selectedIds.size === 0}
@@ -327,13 +369,11 @@ export function PlaylistPanel({
                                                         return est > 0 ? ` • ~${formatFileSize(est)}` : "";
                                                     })()}
                                                 </span>
-                                                {entryTask && (
+                                                {entryTask && entryTask.status !== "error" && (
                                                     <span
                                                         className={`text-[10px] font-semibold px-1.5 py-0.5 rounded font-mono inline-flex items-center gap-1 whitespace-nowrap shrink-0 ${entryTask.status === "completed"
                                                             ? "bg-status-success-subtle/30 text-status-success"
-                                                            : entryTask.status === "error"
-                                                                ? "bg-status-danger-subtle/30 text-status-danger"
-                                                                : "bg-accent-subtle text-accent"
+                                                            : "bg-accent-subtle text-accent"
                                                             }`}
                                                     >
                                                         {entryTask.status === "downloading" && (
@@ -343,9 +383,7 @@ export function PlaylistPanel({
                                                             ? `${entryTask.percent.toFixed(0)}%`
                                                             : entryTask.status === "completed"
                                                                 ? "✓ Downloaded"
-                                                                : entryTask.status === "error"
-                                                                    ? "Failed"
-                                                                    : entryTask.status}
+                                                                : entryTask.status}
                                                     </span>
                                                 )}
                                                 {/* W2-9: show downloaded formats as chips */}
@@ -416,36 +454,57 @@ export function PlaylistPanel({
                                         </div>
 
                                         {/* W2-10: Per-item format dropdown — full preset list */}
-                                        <select
-                                            value={getItemPreset(entry.id)}
-                                            onChange={(e) => {
-                                                const p = e.target.value;
-                                                setItemPresetIds((prev) => {
-                                                    const next = new Map(prev);
-                                                    next.set(entry.id, p);
-                                                    return next;
-                                                });
-                                                if (!isSelected) toggleItem(entry.id);
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="px-1.5 py-1 rounded-md bg-surface-2 border border-border-subtle text-caption font-semibold text-primary outline-none cursor-pointer hover:border-accent/40 transition-colors shrink-0 max-w-[110px]"
-                                            title="Choose format for this item"
-                                        >
-                                            <optgroup label="── Video ──">
-                                                {VIDEO_PRESETS.map((o) => (
-                                                    <option key={o.id} value={o.id}>
-                                                        {o.label}
-                                                    </option>
-                                                ))}
-                                            </optgroup>
-                                            <optgroup label="── Audio ──">
-                                                {AUDIO_PRESETS.map((o) => (
-                                                    <option key={o.id} value={o.id}>
-                                                        {o.label}
-                                                    </option>
-                                                ))}
-                                            </optgroup>
-                                        </select>
+                                        {(() => {
+                                            const itemPreset = getItemPreset(entry.id);
+                                            const selectedRank = RESOLUTION_RANKS[itemPreset] || 0;
+                                            const knownMax = getKnownMaxResolution(entry.id);
+                                            const isCapped = knownMax && selectedRank > knownMax.height;
+
+                                            return (
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <select
+                                                        value={itemPreset}
+                                                        onChange={(e) => {
+                                                            const p = e.target.value;
+                                                            setItemPresetIds((prev) => {
+                                                                const next = new Map(prev);
+                                                                next.set(entry.id, p);
+                                                                return next;
+                                                            });
+                                                            if (!isSelected) toggleItem(entry.id);
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className={`px-1.5 py-1 rounded-md bg-surface-2 border text-caption font-semibold text-primary outline-none cursor-pointer transition-colors shrink-0 max-w-[110px] ${
+                                                            isCapped ? "border-amber-500/50 hover:border-amber-500" : "border-border-subtle hover:border-accent/40"
+                                                        }`}
+                                                        title="Choose format for this item"
+                                                    >
+                                                        <optgroup label="── Video ──">
+                                                            {VIDEO_PRESETS.map((o) => (
+                                                                <option key={o.id} value={o.id}>
+                                                                    {o.label}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                        <optgroup label="── Audio ──">
+                                                            {AUDIO_PRESETS.map((o) => (
+                                                                <option key={o.id} value={o.id}>
+                                                                    {o.label}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    </select>
+                                                    {isCapped && (
+                                                        <div
+                                                            className="w-5 h-5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 cursor-help"
+                                                            title={`Max resolution available is ${knownMax.label} — will download in best available quality`}
+                                                        >
+                                                            <AlertCircle size={11} className="shrink-0" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
 
                                         <button
                                             type="button"

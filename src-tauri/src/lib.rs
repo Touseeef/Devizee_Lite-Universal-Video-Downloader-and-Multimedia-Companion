@@ -345,7 +345,7 @@ async fn fetch_video_info(
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
-        "youtube:skip=dash,translated_subs,comments",
+        "youtube:player_client=android,web;skip=dash,translated_subs,comments",
     ]);
 
     if allow_insecure_ssl == Some(true) {
@@ -1153,6 +1153,8 @@ async fn start_download(
             "--compat-options",
             "no-youtube-unavailable-videos,no-abort-on-error",
             "--no-abort-on-error",
+            "--extractor-args",
+            "youtube:player_client=android,web;skip=dash,translated_subs,comments",
             // SEC-7 (defense-in-depth): sanitise expanded template values so that
             // untrusted video titles cannot introduce path separators into filenames.
             "--restrict-filenames",
@@ -2210,7 +2212,7 @@ async fn get_audio_stream_url(
         "3",
         "--no-warnings",
         "--extractor-args",
-        "youtube:skip=dash,translated_subs,comments",
+        "youtube:player_client=android,web;skip=dash,translated_subs,comments",
     ]);
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
@@ -2302,7 +2304,7 @@ async fn fetch_playlist_info(
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
-        "youtube:skip=dash,translated_subs,comments",
+        "youtube:player_client=android,web;skip=dash,translated_subs,comments",
     ]);
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
@@ -2824,6 +2826,119 @@ fn read_subtitle_file(path: String) -> Result<String, String> {
 
     Ok(format!("WEBVTT\n\n{}", converted))
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalMediaFile {
+    pub id: String,
+    pub title: String,
+    pub file_path: String,
+    pub format: String,
+    pub is_audio: bool,
+    pub file_size: u64,
+    pub modified_time: i64,
+}
+
+#[tauri::command]
+fn scan_local_folder(path: String) -> Result<Vec<LocalMediaFile>, String> {
+    let root = PathBuf::from(path.trim());
+    if !root.exists() || !root.is_dir() {
+        return Err("Specified path does not exist or is not a directory".to_string());
+    }
+
+    let mut results: Vec<LocalMediaFile> = Vec::new();
+
+    fn process_dir(dir: &std::path::Path, results: &mut Vec<LocalMediaFile>, depth: usize) {
+        if depth > 3 {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    if !name.starts_with('.') && name != "node_modules" && name != "$RECYCLE.BIN" {
+                        process_dir(&p, results, depth + 1);
+                    }
+                }
+            } else if p.is_file() {
+                let ext = p
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+
+                let is_vid = matches!(
+                    ext.as_str(),
+                    "mp4" | "mkv" | "webm" | "avi" | "mov" | "m4v" | "flv" | "wmv" | "ts" | "3gp"
+                );
+                let is_aud = matches!(
+                    ext.as_str(),
+                    "mp3" | "m4a" | "flac" | "wav" | "aac" | "opus" | "ogg" | "wma"
+                );
+
+                if is_vid || is_aud {
+                    let title = p
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Untitled")
+                        .to_string();
+
+                    let metadata = std::fs::metadata(&p).ok();
+                    let file_size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                    let modified_time = metadata
+                        .as_ref()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+
+                    let format_label = if is_vid {
+                        match ext.as_str() {
+                            "mov" => "MOV (iPhone/Apple Video)".to_string(),
+                            "mp4" => "MP4 Video".to_string(),
+                            "mkv" => "MKV Video".to_string(),
+                            "webm" => "WebM Video".to_string(),
+                            "avi" => "AVI Video".to_string(),
+                            _ => format!("{} Video", ext.to_uppercase()),
+                        }
+                    } else {
+                        match ext.as_str() {
+                            "mp3" => "MP3 Audio".to_string(),
+                            "m4a" => "M4A Audio (AAC)".to_string(),
+                            "flac" => "FLAC Audio (Lossless)".to_string(),
+                            "wav" => "WAV Audio".to_string(),
+                            _ => format!("{} Audio", ext.to_uppercase()),
+                        }
+                    };
+
+                    use std::hash::{Hash, Hasher};
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    p.to_string_lossy().hash(&mut hasher);
+                    let id = format!("local-{:x}", hasher.finish());
+
+                    results.push(LocalMediaFile {
+                        id,
+                        title,
+                        file_path: p.to_string_lossy().to_string(),
+                        format: format_label,
+                        is_audio: is_aud,
+                        file_size,
+                        modified_time,
+                    });
+                }
+            }
+        }
+    }
+
+    process_dir(&root, &mut results, 0);
+    results.sort_by(|a, b| b.modified_time.cmp(&a.modified_time));
+    Ok(results)
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineInfo {
@@ -3723,6 +3838,7 @@ pub fn run() {
             check_engine_update,
             update_engine,
             get_installed_browsers,
+            scan_local_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

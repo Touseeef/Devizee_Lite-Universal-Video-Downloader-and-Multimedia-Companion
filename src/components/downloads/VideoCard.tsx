@@ -21,7 +21,6 @@ import {
     Volume2,
     VolumeX,
     X,
-    Zap,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -352,16 +351,6 @@ export function VideoCard({
 
     return (
         <div className="bg-surface-1 rounded-2xl p-5 border border-border-subtle relative overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-fast shadow-sm space-y-4">
-            {onClose && (
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="absolute top-3 right-3 p-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface-2 transition-colors z-20 cursor-pointer"
-                    title="Close card"
-                >
-                    <X size={16} />
-                </button>
-            )}
             {/* 2-Column Inspector Layout: col-span-5 for video, col-span-7 for settings */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                 {/* COLUMN 1: Visual Media Inspection Box & Audio Preview */}
@@ -603,18 +592,10 @@ export function VideoCard({
                                         <>
                                             <Volume2 size={13} className="text-accent" />
                                             <span>{t("preview_audio")}</span>
+                                            <span className="text-[11px] opacity-75 font-normal">(Less Data)</span>
                                         </>
                                     )}
                                 </button>
-
-
-                                <div
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent-subtle/50 text-accent text-[11px] font-medium border border-accent/20 select-none shadow-2xs"
-                                    title="Streaming lightweight audio saves ~90% internet data compared to full video"
-                                >
-                                    <Zap size={11} className="text-accent shrink-0" />
-                                    <span>{t("saves_data")}</span>
-                                </div>
                             </div>
 
                             {/* Persistent Media Volume Slider */}
@@ -731,6 +712,17 @@ export function VideoCard({
                                 <RotateCw size={11} className={isRefreshingStream ? "animate-spin text-accent" : "text-tertiary"} />
                                 <span>Refresh Link</span>
                             </button>
+                            {onClose && (
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    className="px-2 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer shadow-2xs ml-0.5"
+                                    title="Close preview card"
+                                >
+                                    <X size={12} />
+                                    <span>Close</span>
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -1137,6 +1129,23 @@ export function VideoCard({
                             <Moon size={16} />
                         </button>
                     </div>
+
+                    {/* Active Schedule Notification Banner */}
+                    {activeScheduleTime && (
+                        <div className="p-2.5 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-between text-caption text-primary animate-in fade-in duration-fast">
+                            <span className="flex items-center gap-1.5 font-medium">
+                                <Moon size={14} className="text-accent shrink-0" />
+                                <span>Download scheduled for <strong className="text-accent">{activeScheduleTime}</strong></span>
+                            </span>
+                            <button
+                                type="button"
+                                onClick={handleCancelSchedule}
+                                className="text-status-danger hover:underline text-[11px] font-semibold cursor-pointer shrink-0 ml-2"
+                            >
+                                Cancel Schedule
+                            </button>
+                        </div>
+                    )}
 
                     {/* Active Download Progress Card (if actively running) */}
                     {activeCardTask && (

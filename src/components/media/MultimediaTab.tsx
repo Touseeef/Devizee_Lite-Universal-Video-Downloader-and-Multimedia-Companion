@@ -1,6 +1,7 @@
 // src/components/media/MultimediaTab.tsx
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
+    ArrowUpDown,
     CheckSquare,
     ExternalLink,
     Film,
@@ -184,12 +185,69 @@ export function MultimediaTab({
         if (videoRef.current) attachEqualizerToMedia(videoRef.current);
     }, []);
 
-    // Filter completed multimedia items
+    type LocalMediaFile = {
+        id: string;
+        title: string;
+        file_path: string;
+        format: string;
+        is_audio: boolean;
+        file_size: number;
+        modified_time: number;
+    };
+
+    const [scannedLocalItems, setScannedLocalItems] = useState<DownloadRecord[]>([]);
+    const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title" | "size_desc">("date_desc");
+
+    const scanFolders = async (foldersToScan: string[]) => {
+        if (!foldersToScan || foldersToScan.length === 0) {
+            setScannedLocalItems([]);
+            return;
+        }
+        const collected: DownloadRecord[] = [];
+        const seenPaths = new Set<string>();
+
+        history.forEach((h) => {
+            if (h.file_path) seenPaths.add(h.file_path.replace(/\\/g, "/").toLowerCase());
+        });
+
+        for (const folder of foldersToScan) {
+            try {
+                const files = await invoke<LocalMediaFile[]>("scan_local_folder", { path: folder });
+                for (const f of files) {
+                    const normPath = f.file_path.replace(/\\/g, "/").toLowerCase();
+                    if (seenPaths.has(normPath)) continue;
+                    seenPaths.add(normPath);
+                    collected.push({
+                        id: f.id,
+                        url: "",
+                        title: f.title,
+                        file_path: f.file_path,
+                        status: "completed",
+                        percent: 100,
+                        format: f.format,
+                        date_added: f.modified_time,
+                        hidden: false,
+                        file_size: f.file_size,
+                    });
+                }
+            } catch (err) {
+                console.warn(`[Multimedia] Failed to scan local folder ${folder}:`, err);
+            }
+        }
+        setScannedLocalItems(collected);
+    };
+
+    useEffect(() => {
+        scanFolders(customFolders);
+    }, [customFolders, history]);
+
+    // Filter completed multimedia items (merges SQLite history and local scanned items)
     const allMediaItems = useMemo(() => {
-        return history.filter(
+        const historyCompleted = history.filter(
             (h) => h.status === "completed" && (isVideoFormat(h.format) || isAudioFormat(h.format))
         );
-    }, [history, isVideoFormat, isAudioFormat]);
+        return [...historyCompleted, ...scannedLocalItems];
+    }, [history, scannedLocalItems, isVideoFormat, isAudioFormat]);
 
     const folderFilteredItems = useMemo(() => {
         if (!selectedFolder) return allMediaItems;
@@ -209,7 +267,7 @@ export function MultimediaTab({
         return folderFilteredItems.filter((m) => isAudioFormat(m.format)).length;
     }, [folderFilteredItems, isAudioFormat]);
 
-    // Filtered items by category & search
+    // Filtered items by category, search & sorting
     const displayedItems = useMemo(() => {
         let items = folderFilteredItems;
         if (mediaFilter === "videos") {
@@ -224,8 +282,15 @@ export function MultimediaTab({
                 (m) => m.title.toLowerCase().includes(q) || m.format.toLowerCase().includes(q)
             );
         }
-        return items;
-    }, [folderFilteredItems, mediaFilter, searchQuery, isVideoFormat, isAudioFormat]);
+
+        return [...items].sort((a, b) => {
+            if (sortBy === "date_desc") return (b.date_added || 0) - (a.date_added || 0);
+            if (sortBy === "date_asc") return (a.date_added || 0) - (b.date_added || 0);
+            if (sortBy === "size_desc") return (b.file_size || 0) - (a.file_size || 0);
+            if (sortBy === "title") return a.title.localeCompare(b.title);
+            return 0;
+        });
+    }, [folderFilteredItems, mediaFilter, searchQuery, sortBy, isVideoFormat, isAudioFormat]);
 
     // Media Queue for playback & drawer
     const currentQueue = useMemo(() => {
@@ -239,11 +304,10 @@ export function MultimediaTab({
         return list;
     }, [displayedItems, isShuffle, dismissedQueueIds]);
 
-    // Upcoming queue items (excluding the currently active one)
+    // Fullscreen queue items (keep all items, active item is highlighted in UI)
     const upcomingQueue = useMemo(() => {
-        if (!activePlayingItem) return currentQueue;
-        return currentQueue.filter((x) => x.id !== activePlayingItem.id);
-    }, [currentQueue, activePlayingItem]);
+        return currentQueue;
+    }, [currentQueue]);
 
     useEffect(() => {
         const handleFs = () => {
@@ -594,6 +658,7 @@ export function MultimediaTab({
                 try {
                     localStorage.setItem("devizee_custom_folders", JSON.stringify(updated));
                 } catch { }
+                scanFolders(updated);
             }
         } catch (err) {
             console.error("Add folder error:", err);
@@ -829,27 +894,46 @@ export function MultimediaTab({
                                     </div>
                                     <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                                         {upcomingQueue.length === 0 ? (
-                                            <div className="py-12 text-center text-white/50 text-caption">No more videos in queue</div>
+                                            <div className="py-12 text-center text-white/50 text-caption">No videos in queue</div>
                                         ) : (
                                             upcomingQueue.map((qItem) => {
                                                 const qId = extractYtId(qItem.url, qItem.id);
+                                                const isActivelyPlaying = activePlayingItem?.id === qItem.id;
                                                 return (
                                                     <div
                                                         key={qItem.id}
                                                         onClick={() => playMediaItem(qItem)}
-                                                        className="flex items-center gap-2.5 p-2 rounded-lg bg-white/5 hover:bg-white/15 transition-all border border-white/10 cursor-pointer group/item"
+                                                        className={`flex items-center gap-2.5 p-2 rounded-lg transition-all border cursor-pointer group/item ${
+                                                            isActivelyPlaying
+                                                                ? "bg-accent/25 hover:bg-accent/30 border-accent ring-1 ring-accent shadow-sm"
+                                                                : "bg-white/5 hover:bg-white/15 border-white/10"
+                                                        }`}
                                                     >
                                                         <div className="w-16 aspect-video rounded bg-black/80 overflow-hidden shrink-0 relative flex items-center justify-center">
                                                             {qId ? (
                                                                 <img src={`https://i.ytimg.com/vi/${qId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" />
                                                             ) : (
-                                                                <Film size={16} className="text-white/40" />
+                                                                <Film size={16} className={isActivelyPlaying ? "text-accent" : "text-white/40"} />
+                                                            )}
+                                                            {isActivelyPlaying && (
+                                                                <div className="absolute inset-0 bg-accent/20 flex items-center justify-center">
+                                                                    <Play size={12} fill="currentColor" className="text-white" />
+                                                                </div>
                                                             )}
                                                         </div>
                                                         <div className="min-w-0 flex-1">
-                                                            <p className="text-white text-caption font-semibold truncate group-hover/item:text-accent transition-colors">
-                                                                {qItem.title}
-                                                            </p>
+                                                            <div className="flex items-center justify-between gap-1">
+                                                                <p className={`text-caption font-semibold truncate transition-colors ${
+                                                                    isActivelyPlaying ? "text-accent font-bold" : "text-white group-hover/item:text-accent"
+                                                                }`}>
+                                                                    {qItem.title}
+                                                                </p>
+                                                                {isActivelyPlaying && (
+                                                                    <span className="text-[9px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/20 shrink-0">
+                                                                        Playing
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                             <span className="text-[10px] font-mono text-white/50">
                                                                 {formatDisplayBadge(qItem.format)}
                                                             </span>
@@ -864,7 +948,7 @@ export function MultimediaTab({
 
                             {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover) */}
                             {isFullscreen && (
-                                <div className="absolute bottom-0 inset-x-0 z-40 px-5 pt-4 pb-8 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <div className="absolute bottom-0 inset-x-0 z-40 px-5 pt-4 pb-3.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                                     {/* Fullscreen Scrubber */}
                                     <div className="flex items-center gap-3 w-full">
                                         <span className="text-[11px] font-mono text-white/70 w-12 text-left">
@@ -1382,6 +1466,22 @@ export function MultimediaTab({
                         <FolderPlus size={13} className="text-accent" />
                         <span className="hidden sm:inline">Add Folder</span>
                     </button>
+
+                    {/* Sort Dropdown */}
+                    <div className="relative">
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value as any)}
+                            className="h-8 pl-2.5 pr-7 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-primary border border-border-subtle transition-colors cursor-pointer appearance-none outline-none focus:ring-1 focus:ring-accent shadow-2xs"
+                            title="Sort media library"
+                        >
+                            <option value="date_desc" className="bg-surface-2 text-primary">Newest</option>
+                            <option value="date_asc" className="bg-surface-2 text-primary">Oldest</option>
+                            <option value="title" className="bg-surface-2 text-primary">Name</option>
+                            <option value="size_desc" className="bg-surface-2 text-primary">Size</option>
+                        </select>
+                        <ArrowUpDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-tertiary pointer-events-none" />
+                    </div>
 
                     {/* View Switcher: Grid vs List */}
                     <div className="inline-flex p-0.5 rounded-lg bg-surface-2 border border-border-subtle">
