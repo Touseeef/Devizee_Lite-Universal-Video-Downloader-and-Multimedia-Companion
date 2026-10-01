@@ -174,6 +174,46 @@ export function DownloadsTab({
                 </div>
             </div>
 
+            {/* StatCards — 4 state tiles (click to filter) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <StatCard
+                    variant="active"
+                    count={activeCount}
+                    items={cardItems.active}
+                    active={queueFilter === "active"}
+                    onClick={() =>
+                        setQueueFilter(queueFilter === "active" ? "all" : "active")
+                    }
+                />
+                <StatCard
+                    variant="queued"
+                    count={queuedCount}
+                    items={cardItems.queued}
+                    active={queueFilter === "queued"}
+                    onClick={() =>
+                        setQueueFilter(queueFilter === "queued" ? "all" : "queued")
+                    }
+                />
+                <StatCard
+                    variant="attention"
+                    count={attentionCount}
+                    items={cardItems.attention}
+                    active={queueFilter === "attention"}
+                    onClick={() =>
+                        setQueueFilter(queueFilter === "attention" ? "all" : "attention")
+                    }
+                />
+                <StatCard
+                    variant="completed"
+                    count={completedCount}
+                    items={cardItems.completed}
+                    active={queueFilter === "completed"}
+                    onClick={() =>
+                        setQueueFilter(queueFilter === "completed" ? "all" : "completed")
+                    }
+                />
+            </div>
+
             {/* Global Queue Action Toolbar */}
             <div className="bg-surface-1 rounded-xl p-3 border border-border-subtle flex flex-wrap items-center justify-between gap-3 shadow-2xs">
                 {selectedHistoryItems.size === 0 ? (
@@ -286,46 +326,6 @@ export function DownloadsTab({
                         </button>
                     </div>
                 )}
-            </div>
-
-            {/* StatCards — 4 state tiles (click to filter) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard
-                    variant="active"
-                    count={activeCount}
-                    items={cardItems.active}
-                    active={queueFilter === "active"}
-                    onClick={() =>
-                        setQueueFilter(queueFilter === "active" ? "all" : "active")
-                    }
-                />
-                <StatCard
-                    variant="queued"
-                    count={queuedCount}
-                    items={cardItems.queued}
-                    active={queueFilter === "queued"}
-                    onClick={() =>
-                        setQueueFilter(queueFilter === "queued" ? "all" : "queued")
-                    }
-                />
-                <StatCard
-                    variant="attention"
-                    count={attentionCount}
-                    items={cardItems.attention}
-                    active={queueFilter === "attention"}
-                    onClick={() =>
-                        setQueueFilter(queueFilter === "attention" ? "all" : "attention")
-                    }
-                />
-                <StatCard
-                    variant="completed"
-                    count={completedCount}
-                    items={cardItems.completed}
-                    active={queueFilter === "completed"}
-                    onClick={() =>
-                        setQueueFilter(queueFilter === "completed" ? "all" : "completed")
-                    }
-                />
             </div>
 
             {/* Comprehensive Activity List */}
