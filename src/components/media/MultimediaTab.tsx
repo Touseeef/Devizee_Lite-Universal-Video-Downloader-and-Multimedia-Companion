@@ -111,6 +111,15 @@ export function MultimediaTab({
     };
     const [videoError, setVideoError] = useState<string | null>(null);
 
+    const [customFolders, setCustomFolders] = useState<string[]>(() => {
+        try {
+            const saved = localStorage.getItem("devizee_custom_folders");
+            if (saved) return JSON.parse(saved);
+        } catch { }
+        return [];
+    });
+    const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+
     // In-App Player State
     const [activePlayingItem, setActivePlayingItem] = useState<DownloadRecord | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -182,17 +191,27 @@ export function MultimediaTab({
         );
     }, [history, isVideoFormat, isAudioFormat]);
 
+    const folderFilteredItems = useMemo(() => {
+        if (!selectedFolder) return allMediaItems;
+        const normalizedFolder = selectedFolder.replace(/\\/g, "/").toLowerCase();
+        return allMediaItems.filter((m) => {
+            if (!m.file_path) return false;
+            const p = m.file_path.replace(/\\/g, "/").toLowerCase();
+            return p.startsWith(normalizedFolder);
+        });
+    }, [allMediaItems, selectedFolder]);
+
     const videoCount = useMemo(() => {
-        return allMediaItems.filter((m) => isVideoFormat(m.format)).length;
-    }, [allMediaItems, isVideoFormat]);
+        return folderFilteredItems.filter((m) => isVideoFormat(m.format)).length;
+    }, [folderFilteredItems, isVideoFormat]);
 
     const audioCount = useMemo(() => {
-        return allMediaItems.filter((m) => isAudioFormat(m.format)).length;
-    }, [allMediaItems, isAudioFormat]);
+        return folderFilteredItems.filter((m) => isAudioFormat(m.format)).length;
+    }, [folderFilteredItems, isAudioFormat]);
 
     // Filtered items by category & search
     const displayedItems = useMemo(() => {
-        let items = allMediaItems;
+        let items = folderFilteredItems;
         if (mediaFilter === "videos") {
             items = items.filter((m) => isVideoFormat(m.format));
         } else if (mediaFilter === "audios") {
@@ -206,7 +225,7 @@ export function MultimediaTab({
             );
         }
         return items;
-    }, [allMediaItems, mediaFilter, searchQuery, isVideoFormat, isAudioFormat]);
+    }, [folderFilteredItems, mediaFilter, searchQuery, isVideoFormat, isAudioFormat]);
 
     // Media Queue for playback & drawer
     const currentQueue = useMemo(() => {
@@ -569,11 +588,26 @@ export function MultimediaTab({
                 multiple: false,
             });
             if (selected && typeof selected === "string") {
-                openFolder(selected);
+                const updated = Array.from(new Set([...customFolders, selected]));
+                setCustomFolders(updated);
+                setSelectedFolder(selected);
+                try {
+                    localStorage.setItem("devizee_custom_folders", JSON.stringify(updated));
+                } catch { }
             }
         } catch (err) {
             console.error("Add folder error:", err);
         }
+    };
+
+    const handleRemoveFolder = (folderPath: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const updated = customFolders.filter((f) => f !== folderPath);
+        setCustomFolders(updated);
+        if (selectedFolder === folderPath) setSelectedFolder(null);
+        try {
+            localStorage.setItem("devizee_custom_folders", JSON.stringify(updated));
+        } catch { }
     };
 
     // Multi-Select Handlers
@@ -1205,6 +1239,77 @@ export function MultimediaTab({
                 </div>
             )}
 
+            {/* Custom Folders Library Bar */}
+            {customFolders.length > 0 && (
+                <div className="bg-surface-1 p-3 rounded-xl border border-border-subtle shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-caption font-bold text-secondary flex items-center gap-1.5">
+                            <Folder size={14} className="text-accent" />
+                            <span>Media Folders</span>
+                        </span>
+                        {selectedFolder && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedFolder(null)}
+                                className="text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                            >
+                                Reset to All Media
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setSelectedFolder(null)}
+                            className={`px-3 py-1.5 rounded-lg text-caption font-semibold transition-all cursor-pointer border ${
+                                selectedFolder === null
+                                    ? "bg-accent text-white border-accent shadow-xs"
+                                    : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border-border-subtle"
+                            }`}
+                        >
+                            All Folders ({allMediaItems.length})
+                        </button>
+                        {customFolders.map((folderPath) => {
+                            const folderName = folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
+                            const count = allMediaItems.filter((m) => {
+                                if (!m.file_path) return false;
+                                return m.file_path.replace(/\\/g, "/").toLowerCase().startsWith(folderPath.replace(/\\/g, "/").toLowerCase());
+                            }).length;
+                            const isSelected = selectedFolder === folderPath;
+
+                            return (
+                                <div
+                                    key={folderPath}
+                                    onClick={() => setSelectedFolder(isSelected ? null : folderPath)}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-caption font-semibold transition-all cursor-pointer border shadow-2xs ${
+                                        isSelected
+                                            ? "bg-accent text-white border-accent shadow-xs"
+                                            : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border-border-subtle"
+                                    }`}
+                                    title={folderPath}
+                                >
+                                    <Folder size={13} className={isSelected ? "text-white" : "text-accent"} />
+                                    <span>{folderName}</span>
+                                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${isSelected ? "bg-white/20 text-white" : "bg-surface-3 text-tertiary"}`}>
+                                        {count}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleRemoveFolder(folderPath, e)}
+                                        className={`w-4 h-4 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                                            isSelected ? "hover:bg-white/20 text-white/80 hover:text-white" : "hover:bg-surface-3 text-tertiary hover:text-status-danger"
+                                        }`}
+                                        title="Remove folder from library"
+                                    >
+                                        <X size={11} />
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* ==================== 2. CONTROL BAR (Filter Tabs, Search, Add Folder, View Mode) ==================== */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-surface-1 p-3 rounded-xl border border-border-subtle shadow-2xs">
                 {/* Left: Filter Tabs */}
@@ -1439,38 +1544,39 @@ export function MultimediaTab({
                                         <button
                                             type="button"
                                             onClick={() => playMediaItem(item)}
-                                            className="text-caption font-bold text-accent hover:underline flex items-center gap-1 cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent hover:bg-accent-hover text-white text-caption font-semibold transition-transform hover:scale-102 active:scale-98 shadow-xs cursor-pointer"
+                                            title="Play in-app"
                                         >
-                                            <Play size={12} fill="currentColor" />
+                                            <Play size={10} fill="currentColor" />
                                             <span>Play</span>
                                         </button>
 
                                         <div className="flex items-center gap-1">
                                             <button
                                                 type="button"
-                                                onClick={() => openFile(item.file_path)}
-                                                className="w-7 h-7 rounded-md hover:bg-surface-2 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
-                                                title="Open in Default System Player (VLC, etc.)"
-                                            >
-                                                <ExternalLink size={13} />
-                                            </button>
-
-                                            <button
-                                                type="button"
                                                 onClick={() => openFolder(item.file_path)}
-                                                className="w-7 h-7 rounded-md hover:bg-surface-2 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                                                className="p-1.5 rounded-lg hover:bg-surface-2 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
                                                 title="Reveal in Folder"
                                             >
-                                                <Folder size={13} />
+                                                <Folder size={14} />
                                             </button>
 
                                             <button
                                                 type="button"
                                                 onClick={() => handleDeleteFile(item.id, item.file_path)}
-                                                className="w-7 h-7 rounded-md hover:bg-status-danger-subtle text-secondary hover:text-status-danger flex items-center justify-center transition-colors cursor-pointer"
+                                                className="p-1.5 rounded-lg hover:bg-status-danger-subtle text-secondary hover:text-status-danger flex items-center justify-center transition-colors cursor-pointer"
                                                 title="Delete file from disk"
                                             >
-                                                <Trash2 size={13} />
+                                                <Trash2 size={14} />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => openFile(item.file_path)}
+                                                className="p-1.5 rounded-lg hover:bg-surface-2 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                                                title="Open in System Player"
+                                            >
+                                                <ExternalLink size={14} />
                                             </button>
                                         </div>
                                     </div>
@@ -1543,42 +1649,42 @@ export function MultimediaTab({
                                     </div>
                                 </div>
 
-                                {/* Always-Visible Actions */}
-                                <div className="flex items-center gap-1 shrink-0 bg-surface-2/60 px-1 py-0.5 rounded-lg border border-border-subtle/50">
-                                    <button
-                                        type="button"
-                                        onClick={() => playMediaItem(item)}
-                                        className="w-7 h-7 rounded-md hover:bg-surface-3 text-accent flex items-center justify-center transition-colors cursor-pointer"
-                                        title="Play in-app"
-                                    >
-                                        <Play size={12} fill="currentColor" />
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => openFile(item.file_path)}
-                                        className="w-7 h-7 rounded-md hover:bg-surface-3 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
-                                        title="Open in System Player"
-                                    >
-                                        <ExternalLink size={12} />
-                                    </button>
-
+                                {/* Always-Visible Actions matching Downloads Tab Design */}
+                                <div className="flex items-center gap-1 shrink-0">
                                     <button
                                         type="button"
                                         onClick={() => openFolder(item.file_path)}
-                                        className="w-7 h-7 rounded-md hover:bg-surface-3 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                                        className="p-1.5 rounded-lg hover:bg-surface-2 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
                                         title="Open Folder"
                                     >
-                                        <Folder size={12} />
+                                        <Folder size={15} />
                                     </button>
 
                                     <button
                                         type="button"
                                         onClick={() => handleDeleteFile(item.id, item.file_path)}
-                                        className="w-7 h-7 rounded-md hover:bg-status-danger-subtle text-secondary hover:text-status-danger flex items-center justify-center transition-colors cursor-pointer"
+                                        className="p-1.5 rounded-lg hover:bg-status-danger-subtle text-secondary hover:text-status-danger flex items-center justify-center transition-colors cursor-pointer"
                                         title="Delete file"
                                     >
-                                        <Trash2 size={12} />
+                                        <Trash2 size={15} />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => openFile(item.file_path)}
+                                        className="p-1.5 rounded-lg hover:bg-surface-2 text-secondary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
+                                        title="Open in System Player"
+                                    >
+                                        <ExternalLink size={15} />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => playMediaItem(item)}
+                                        className="w-6 h-6 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-xs shrink-0 cursor-pointer ml-0.5"
+                                        title="Play in-app"
+                                    >
+                                        <Play size={10} fill="currentColor" className="ml-0.5" />
                                     </button>
                                 </div>
                             </div>
