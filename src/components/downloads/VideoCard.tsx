@@ -690,23 +690,23 @@ export function VideoCard({
                 </div>
 
                 {/* COLUMN 2: Apple-HIG "Configure & Go" Settings Panel */}
-                <div className="lg:col-span-7 space-y-4 lg:border-l border-border-subtle lg:pl-6">
+                <div className="lg:col-span-7 space-y-4 lg:border-l border-border-subtle lg:pl-5">
                     {/* Header */}
-                    <div className="flex items-center justify-between pb-2.5 border-b border-border-subtle/60">
-                        <div>
-                            <h4 className="text-body-sm font-bold text-primary">Configure & Go</h4>
-                            <p className="text-[11px] text-tertiary">Select media type, quality tier & destination</p>
+                    <div className="flex flex-wrap items-center justify-between pb-2.5 border-b border-border-subtle/60 gap-2">
+                        <div className="min-w-0 flex-1">
+                            <h4 className="text-body-sm font-bold text-primary truncate">Configure & Go</h4>
+                            <p className="text-[11px] text-tertiary truncate">Select media type, quality tier & destination</p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 shrink-0">
                             {videoInfo.duration_string && (
-                                <span className="text-[11px] font-mono font-medium text-tertiary px-2 py-0.5 rounded bg-surface-2 border border-border-subtle" title="Total video duration">
+                                <span className="text-[11px] font-mono font-medium text-tertiary px-2 py-1 rounded bg-surface-2 border border-border-subtle whitespace-nowrap" title="Total video duration">
                                     {videoInfo.duration_string}
                                 </span>
                             )}
                             <button
                                 type="button"
                                 onClick={handleRefreshStream}
-                                className="px-2 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 text-[11px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                className="px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 text-[11px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
                                 title="Refresh media stream link if video or audio preview link has expired"
                             >
                                 <RotateCw size={11} className={isRefreshingStream ? "animate-spin text-accent" : "text-tertiary"} />
@@ -716,7 +716,7 @@ export function VideoCard({
                                 <button
                                     type="button"
                                     onClick={onClose}
-                                    className="px-2 py-0.5 rounded bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer shadow-2xs ml-0.5"
+                                    className="px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle hover:border-accent/40 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs whitespace-nowrap ml-0.5"
                                     title="Close preview card"
                                 >
                                     <X size={12} />
@@ -755,7 +755,7 @@ export function VideoCard({
                                                 key={f.format_id + f.label}
                                                 type="button"
                                                 onClick={() => setSelectedFormat(f)}
-                                                className={`px-3 py-1.5 rounded-lg text-caption font-semibold transition-all border cursor-pointer ${isSelected
+                                                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-caption font-semibold transition-all border cursor-pointer whitespace-nowrap ${isSelected
                                                     ? "bg-accent/15 text-accent border-accent ring-2 ring-accent/40 font-bold shadow-xs"
                                                     : "bg-surface-2 text-primary border-border-subtle hover:border-accent/40 hover:bg-surface-3"
                                                     }`}
@@ -776,7 +776,7 @@ export function VideoCard({
                                                     const f = videoInfo.video_formats?.find(x => x.format_id === e.target.value);
                                                     if (f) setSelectedFormat(f);
                                                 }}
-                                                className={`px-2.5 py-1.5 rounded-lg text-caption font-medium outline-none cursor-pointer border ${isDropdownSelected
+                                                className={`px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-xs sm:text-caption font-medium outline-none cursor-pointer border whitespace-nowrap ${isDropdownSelected
                                                     ? "bg-accent/15 text-accent border-accent ring-2 ring-accent/40 font-bold"
                                                     : "bg-surface-2 text-primary border-border-subtle hover:border-accent/40"
                                                     }`}
@@ -834,7 +834,7 @@ export function VideoCard({
                                             key={f.format_id + f.label + f.ext}
                                             type="button"
                                             onClick={() => setSelectedFormat(f)}
-                                            className={`px-3 py-1.5 rounded-lg text-caption font-semibold transition-all border cursor-pointer ${isSelected
+                                            className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-caption font-semibold transition-all border cursor-pointer whitespace-nowrap ${isSelected
                                                 ? "bg-accent/15 text-accent border-accent ring-2 ring-accent/40 font-bold shadow-xs"
                                                 : "bg-surface-2 text-primary border-border-subtle hover:border-accent/40 hover:bg-surface-3"
                                                 }`}
@@ -930,9 +930,9 @@ export function VideoCard({
                         </div>
                     )}
                     {/* Row 3: Destination Folder Selector & Clip Trimmer Button */}
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center pt-1">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2.5 pt-1">
                         {/* Destination Folder */}
-                        <div className="sm:col-span-9 space-y-1">
+                        <div className="flex-1 min-w-0 space-y-1">
                             <label className="text-[10px] uppercase font-bold tracking-wider text-tertiary">Destination</label>
                             <button
                                 type="button"
@@ -953,7 +953,7 @@ export function VideoCard({
                         </div>
 
                         {/* Clip Trimmer Action */}
-                        <div className="sm:col-span-3 space-y-1">
+                        <div className="shrink-0 space-y-1">
                             <label className="text-[10px] uppercase font-bold tracking-wider text-tertiary">Trim Section</label>
                             <button
                                 type="button"
@@ -963,14 +963,14 @@ export function VideoCard({
                                         setTrimEnd(videoInfo.duration_string);
                                     }
                                 }}
-                                className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-caption font-bold transition-all cursor-pointer shadow-2xs ${isTrimming
+                                className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border text-caption font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap ${isTrimming
                                     ? "bg-accent text-white border-accent shadow-xs"
                                     : "bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border-border-subtle"
                                     }`}
                                 title="Trim video segment before downloading without fetching full video"
                             >
-                                <Scissors size={14} />
-                                <span className="truncate">{isTrimming ? "Trimming On" : "Clip Trimmer"}</span>
+                                <Scissors size={14} className="shrink-0" />
+                                <span>{isTrimming ? "Trimming On" : "Clip Trimmer"}</span>
                             </button>
                         </div>
                     </div>
@@ -1070,17 +1070,17 @@ export function VideoCard({
                             type="button"
                             onClick={onDownloadClick}
                             disabled={isStartingDownload}
-                            className="flex-1 py-3 px-4 rounded-xl bg-accent hover:bg-accent-hover text-white font-bold text-body-sm shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                            className="flex-1 min-w-0 py-2.5 sm:py-3 px-3 sm:px-4 rounded-xl bg-accent hover:bg-accent-hover text-white font-bold text-caption sm:text-body-sm shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                             title={isAudioSelected ? "Extract audio stream now" : "Download full video stream now"}
                         >
                             {isStartingDownload ? (
-                                <Loader2 size={16} className="animate-spin" />
+                                <Loader2 size={16} className="animate-spin shrink-0" />
                             ) : isAudioSelected ? (
-                                <Music size={16} />
+                                <Music size={16} className="shrink-0" />
                             ) : (
-                                <Download size={16} strokeWidth={2.5} />
+                                <Download size={16} strokeWidth={2.5} className="shrink-0" />
                             )}
-                            <span>
+                            <span className="truncate whitespace-nowrap">
                                 {isStartingDownload
                                     ? "Starting Download..."
                                     : isAudioSelected
@@ -1089,45 +1089,47 @@ export function VideoCard({
                             </span>
                         </button>
 
-                        {!isAudioSelected && (
+                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            {!isAudioSelected && (
+                                <button
+                                    type="button"
+                                    onClick={toggleSubtitles}
+                                    disabled={isStartingDownload || hasSubtitles === false}
+                                    className={`px-3 py-2.5 sm:py-3 rounded-xl border transition-all shadow-2xs shrink-0 flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap ${
+                                        hasSubtitles === false
+                                            ? "bg-surface-2/60 border-border-subtle/50 text-tertiary/60 opacity-60 cursor-not-allowed"
+                                            : includeSubtitles
+                                                ? "bg-accent/15 border-accent text-accent hover:bg-accent/25 cursor-pointer shadow-xs"
+                                                : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-tertiary cursor-pointer"
+                                    }`}
+                                    title={
+                                        hasSubtitles === false
+                                            ? "No subtitles or captions available for this video on the source platform"
+                                            : includeSubtitles
+                                                ? "Subtitles Enabled: Captions are visible in player and will automatically download & embed into the video. Click to disable."
+                                                : "Subtitles Disabled: Captions are hidden and will not be downloaded. Click to enable automatic subtitle download."
+                                    }
+                                >
+                                    <Subtitles size={15} className="shrink-0" />
+                                    <span className="hidden sm:inline">
+                                        {hasSubtitles === false ? "No Subs" : includeSubtitles ? "Subs: On" : "Subs: Off"}
+                                    </span>
+                                </button>
+                            )}
+
                             <button
                                 type="button"
-                                onClick={toggleSubtitles}
-                                disabled={isStartingDownload || hasSubtitles === false}
-                                className={`px-3 py-3 rounded-xl border transition-all shadow-2xs shrink-0 flex items-center gap-1.5 text-xs font-semibold ${
-                                    hasSubtitles === false
-                                        ? "bg-surface-2/60 border-border-subtle/50 text-tertiary/60 opacity-60 cursor-not-allowed"
-                                        : includeSubtitles
-                                            ? "bg-accent/15 border-accent text-accent hover:bg-accent/25 cursor-pointer shadow-xs"
-                                            : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-tertiary cursor-pointer"
-                                }`}
-                                title={
-                                    hasSubtitles === false
-                                        ? "No subtitles or captions available for this video on the source platform"
-                                        : includeSubtitles
-                                            ? "Subtitles Enabled: Captions are visible in player and will automatically download & embed into the video. Click to disable."
-                                            : "Subtitles Disabled: Captions are hidden and will not be downloaded. Click to enable automatic subtitle download."
-                                }
+                                onClick={() => setIsScheduleOpen(true)}
+                                disabled={isStartingDownload}
+                                className={`px-3.5 py-2.5 sm:py-3 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 flex items-center justify-center ${activeScheduleTime
+                                    ? "bg-accent text-white border-accent"
+                                    : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-secondary hover:text-accent"
+                                    }`}
+                                title={activeScheduleTime ? `Download scheduled for ${activeScheduleTime}. Click to edit schedule.` : "Schedule Download (Night Mode / Off-Peak Queue)"}
                             >
-                                <Subtitles size={15} />
-                                <span className="hidden sm:inline">
-                                    {hasSubtitles === false ? "No Subs" : includeSubtitles ? "Subs: On (Auto-Download)" : "Subs: Off"}
-                                </span>
+                                <Moon size={16} className="shrink-0" />
                             </button>
-                        )}
-
-                        <button
-                            type="button"
-                            onClick={() => setIsScheduleOpen(true)}
-                            disabled={isStartingDownload}
-                            className={`px-3.5 py-3 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 flex items-center justify-center ${activeScheduleTime
-                                ? "bg-accent text-white border-accent"
-                                : "bg-surface-2 hover:bg-surface-3 border-border-subtle text-secondary hover:text-accent"
-                                }`}
-                            title={activeScheduleTime ? `Download scheduled for ${activeScheduleTime}. Click to edit schedule.` : "Schedule Download (Night Mode / Off-Peak Queue)"}
-                        >
-                            <Moon size={16} />
-                        </button>
+                        </div>
                     </div>
 
                     {/* Active Schedule Notification Banner */}
