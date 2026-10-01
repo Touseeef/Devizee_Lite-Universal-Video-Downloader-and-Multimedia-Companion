@@ -3101,6 +3101,7 @@ function detectAudioMime(arr: Uint8Array): string {
               }}
               history={history}
               audioRef={audioRef}
+              activeVideoInfo={videoInfo}
             />
           )}
 

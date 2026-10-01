@@ -18,6 +18,7 @@ import type {
     DownloadRecord,
     PlaylistEntry,
     PlaylistInfo,
+    VideoInfo,
 } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
@@ -47,6 +48,7 @@ export function PlaylistPanel({
     onClosePreview,
     history,
     audioRef,
+    activeVideoInfo,
 }: {
     t: (key: TranslationKey) => string;
     playlistInfo: PlaylistInfo | null;
@@ -72,6 +74,7 @@ export function PlaylistPanel({
     onClosePreview: () => void;
     history: DownloadRecord[];
     audioRef: React.RefObject<HTMLAudioElement | null>;
+    activeVideoInfo?: VideoInfo | null;
 }) {
     const formatSeconds = (secs: number) => {
         // W3-6: Guard against NaN/Infinity from live streams or broken durations.
@@ -135,12 +138,53 @@ export function PlaylistPanel({
     };
 
     const [itemPresetIds, setItemPresetIds] = useState<Map<string, string>>(new Map());
-    const [globalPreset, setGlobalPreset] = useState("1080p");
+    const [defaultPreset, setDefaultPreset] = useState("1080p");
 
     const getItemPreset = (entryId: string): string => {
         const override = itemPresetIds.get(entryId);
         if (override) return override;
-        return globalPreset;
+        return defaultPreset;
+    };
+
+    const handleApplyPreset = (p: string) => {
+        if (selectedIds.size === 0) {
+            // No selection -> change default for whole playlist
+            setDefaultPreset(p);
+            setItemPresetIds(new Map());
+        } else {
+            // Selection exists -> apply ONLY to the selected items!
+            setItemPresetIds((prev) => {
+                const next = new Map(prev);
+                for (const id of selectedIds) {
+                    next.set(id, p);
+                }
+                return next;
+            });
+        }
+    };
+
+    const getEntryMaxResolution = (entryId: string): { label: string; height: number } | null => {
+        // 1. If currently active video info matches this entry, check its detected formats
+        if (activeVideoInfo && activeVideoInfo.id === entryId && activeVideoInfo.video_formats?.length) {
+            let maxHeight = 0;
+            let maxLabel = "";
+            for (const f of activeVideoInfo.video_formats) {
+                const label = (f.label || "").toLowerCase();
+                const res = (f.resolution || "").toLowerCase();
+                for (const [key, height] of Object.entries(RESOLUTION_RANKS)) {
+                    if ((label.includes(key) || res.includes(key)) && height > maxHeight) {
+                        maxHeight = height;
+                        maxLabel = key.toUpperCase();
+                    }
+                }
+            }
+            if (maxHeight > 0) {
+                return { label: maxLabel, height: maxHeight };
+            }
+        }
+
+        // 2. Check download history
+        return getKnownMaxResolution(entryId);
     };
 
     const getEstimatedEntryBytes = (entry: PlaylistEntry, presetId: string): number => {
@@ -158,13 +202,25 @@ export function PlaylistPanel({
         );
     };
 
-    // "Authoritative" when every selected row resolves to the global preset.
-    // Otherwise it's Mixed — some row was individually overridden.
     const selectedArray = Array.from(selectedIds);
-    const globalDropdownActive =
+    const selectedPresets = selectedArray.map((id) => getItemPreset(id));
+    const allSelectedSamePreset =
         selectedArray.length === 0 ||
-        selectedArray.every((id) => getItemPreset(id) === globalPreset);
-    const hasMixedFormats = selectedArray.length > 0 && !globalDropdownActive;
+        (selectedPresets.length > 0 && selectedPresets.every((pr) => pr === selectedPresets[0]));
+    const topDropdownValue = selectedArray.length === 0
+        ? defaultPreset
+        : allSelectedSamePreset
+            ? selectedPresets[0]
+            : "";
+    const hasMixedFormats = selectedArray.length > 0 && !allSelectedSamePreset;
+
+    // Only show high-res warning pill if any SELECTED item has 4k or 1440p requested
+    const has4kOr1440pSelected = selectedArray.length === 0
+        ? (defaultPreset === "4k" || defaultPreset === "1440p")
+        : selectedArray.some((id) => {
+            const pr = getItemPreset(id);
+            return pr === "4k" || pr === "1440p";
+        });
 
     const totalSelectedBytes = selectedArray.reduce((acc, id) => {
         const entry = playlistInfo?.entries.find((e) => e.id === id);
@@ -233,26 +289,26 @@ export function PlaylistPanel({
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                            {/* W2-10: SINGLE global preset dropdown (video + audio grouped) */}
+                            {/* Preset dropdown: applies to selected items, or all if none selected */}
                             <span className="text-caption font-semibold text-tertiary whitespace-nowrap">
                                 {selectedIds.size === 0
                                     ? "Apply to All:"
                                     : `Apply to ${selectedIds.size} Selected:`}
                             </span>
                             <select
-                                value={globalPreset}
-                                onChange={(e) => {
-                                    const p = e.target.value;
-                                    setGlobalPreset(p);
-                                    setItemPresetIds(new Map());
-                                    if (selectedIds.size === 0) selectAll();
-                                }}
-                                className={`border rounded-md px-2.5 py-1 text-caption font-semibold outline-none cursor-pointer transition-all ${globalDropdownActive
+                                value={topDropdownValue}
+                                onChange={(e) => handleApplyPreset(e.target.value)}
+                                className={`border rounded-md px-2.5 py-1 text-caption font-semibold outline-none cursor-pointer transition-all ${allSelectedSamePreset && (topDropdownValue === "4k" || topDropdownValue === "1440p")
                                     ? "bg-accent/15 text-accent border-accent ring-1 ring-accent/40"
                                     : "bg-surface-1 text-primary border-border-subtle hover:border-accent/40"
                                     }`}
-                                title="Apply this format to all selected items"
+                                title={selectedIds.size === 0 ? "Apply this format to all items" : `Apply this format to the ${selectedIds.size} selected items`}
                             >
+                                {hasMixedFormats && (
+                                    <option value="" disabled>
+                                        Mixed Formats...
+                                    </option>
+                                )}
                                 <optgroup label="── Video ──">
                                     {VIDEO_PRESETS.map((p) => (
                                         <option key={p.id} value={p.id}>
@@ -271,17 +327,17 @@ export function PlaylistPanel({
 
                             {hasMixedFormats && (
                                 <span className="text-[10px] italic text-tertiary whitespace-nowrap">
-                                    (mixed overrides)
+                                    (mixed formats)
                                 </span>
                             )}
 
-                            {(globalPreset === "4k" || globalPreset === "1440p") && (
+                            {has4kOr1440pSelected && (
                                 <span
                                     className="text-[10px] text-amber-400/90 flex items-center gap-1 font-medium bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 cursor-help"
-                                    title="Source videos without 4K support will automatically download at their highest available resolution (e.g. 1080p)"
+                                    title="Selected videos without 4K/1440p support will automatically download at their highest available resolution (e.g. 1080p)"
                                 >
                                     <AlertCircle size={10} className="shrink-0" />
-                                    <span>Non-{globalPreset.toUpperCase()} fallback to best</span>
+                                    <span>Selected 4K fallback to best</span>
                                 </span>
                             )}
 
@@ -453,12 +509,13 @@ export function PlaylistPanel({
                                             </div>
                                         </div>
 
-                                        {/* W2-10: Per-item format dropdown — full preset list */}
+                                        {/* Per-item format dropdown — full preset list */}
                                         {(() => {
                                             const itemPreset = getItemPreset(entry.id);
                                             const selectedRank = RESOLUTION_RANKS[itemPreset] || 0;
-                                            const knownMax = getKnownMaxResolution(entry.id);
+                                            const knownMax = getEntryMaxResolution(entry.id);
                                             const isCapped = knownMax && selectedRank > knownMax.height;
+                                            const isHighResSelected = isSelected && (itemPreset === "4k" || itemPreset === "1440p");
 
                                             return (
                                                 <div className="flex items-center gap-1 shrink-0">
@@ -475,7 +532,11 @@ export function PlaylistPanel({
                                                         }}
                                                         onClick={(e) => e.stopPropagation()}
                                                         className={`px-1.5 py-1 rounded-md bg-surface-2 border text-caption font-semibold text-primary outline-none cursor-pointer transition-colors shrink-0 max-w-[110px] ${
-                                                            isCapped ? "border-amber-500/50 hover:border-amber-500" : "border-border-subtle hover:border-accent/40"
+                                                            isCapped
+                                                                ? "border-amber-500/50 hover:border-amber-500"
+                                                                : isHighResSelected
+                                                                    ? "border-accent/60"
+                                                                    : "border-border-subtle hover:border-accent/40"
                                                         }`}
                                                         title="Choose format for this item"
                                                     >
@@ -494,14 +555,21 @@ export function PlaylistPanel({
                                                             ))}
                                                         </optgroup>
                                                     </select>
-                                                    {isCapped && (
+                                                    {isCapped ? (
                                                         <div
                                                             className="w-5 h-5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 cursor-help"
-                                                            title={`Max resolution available is ${knownMax.label} — will download in best available quality`}
+                                                            title={`Max resolution available is ${knownMax.label} — will download in best available quality (${knownMax.label})`}
                                                         >
                                                             <AlertCircle size={11} className="shrink-0" />
                                                         </div>
-                                                    )}
+                                                    ) : isHighResSelected ? (
+                                                        <div
+                                                            className="w-5 h-5 rounded-full bg-accent/15 text-accent border border-accent/30 flex items-center justify-center shrink-0 cursor-help"
+                                                            title="4K/1440p requested for this video. If unavailable on the platform, Devizee will automatically download its highest available quality (e.g. 1080p)."
+                                                        >
+                                                            <AlertCircle size={11} className="shrink-0" />
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             );
                                         })()}
