@@ -449,7 +449,7 @@ export default function App() {
       customFlags: "",
       logLevel: "info",
       downloadSubtitles: true,
-      subtitleLanguages: "all",
+      subtitleLanguages: "en.*,en",
       allowInsecureSSL: false,
     };
   });

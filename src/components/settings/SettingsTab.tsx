@@ -525,12 +525,12 @@ export function SettingsTab({
                     {settings.downloadSubtitles !== false && (
                         <SettingRow title="Subtitle Languages" desc="Target languages to fetch and embed">
                             <select
-                                value={settings.subtitleLanguages || "all"}
+                                value={settings.subtitleLanguages || "en.*,en"}
                                 onChange={(e) => updateSetting("subtitleLanguages", e.target.value)}
                                 className="bg-surface-2 border border-border-subtle rounded-md px-3 py-1.5 text-caption font-semibold outline-none text-primary cursor-pointer"
                             >
+                                <option value="en.*,en">English (Default)</option>
                                 <option value="all">All Available Subtitles</option>
-                                <option value="en.*,en">English</option>
                                 <option value="es.*,es">Spanish (Español)</option>
                                 <option value="fr.*,fr">French (Français)</option>
                                 <option value="de.*,de">German (Deutsch)</option>

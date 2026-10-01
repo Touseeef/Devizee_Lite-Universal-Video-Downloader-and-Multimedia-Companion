@@ -1231,11 +1231,17 @@ async fn start_download(
         }
 
         if !is_audio_only && download_subtitles.unwrap_or(false) && download_sections.is_none() {
+            // Route all standalone subtitle (.vtt/.srt) files into a dedicated "subtitles" subfolder
+            // inside the video download directory so they don't clutter the main videos folder.
+            let subs_dir = download_dir.join("subtitles");
+            let _ = std::fs::create_dir_all(&subs_dir);
+            cmd.args(["-P", &format!("subtitle:{}", subs_dir.to_string_lossy())]);
+
             let langs = subtitle_languages
                 .as_deref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
-                .unwrap_or("all");
+                .unwrap_or("en.*,en");
 
             if langs == "all" {
                 // When "all" is requested, only write official/manual subtitles.
