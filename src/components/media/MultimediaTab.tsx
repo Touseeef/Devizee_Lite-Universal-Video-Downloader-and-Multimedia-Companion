@@ -18,6 +18,7 @@ import {
     Repeat,
     Repeat1,
     RotateCcw,
+    RotateCw,
     Scaling,
     Search,
     Shuffle,
@@ -162,6 +163,12 @@ export function MultimediaTab({
     // Queue dismissals state
     const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(new Set());
     const [videoFitMode, setVideoFitMode] = useState<"contain" | "cover">("contain");
+    const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+
+    useEffect(() => {
+        if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
+        if (audioRef.current) audioRef.current.playbackRate = playbackSpeed;
+    }, [playbackSpeed]);
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -992,6 +999,14 @@ export function MultimediaTab({
                                             </button>
                                             <button
                                                 type="button"
+                                                onClick={() => handleSeek(Math.max(0, currentTime - 10))}
+                                                className="p-1.5 text-white/80 hover:text-white hover:bg-white/15 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                                                title="Skip Back 10s"
+                                            >
+                                                <RotateCcw size={16} />
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={togglePlayPause}
                                                 className="w-10 h-10 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
                                                 title={isPlaying ? "Pause" : "Play"}
@@ -1000,11 +1015,31 @@ export function MultimediaTab({
                                             </button>
                                             <button
                                                 type="button"
+                                                onClick={() => handleSeek(Math.min(duration || Infinity, currentTime + 10))}
+                                                className="p-1.5 text-white/80 hover:text-white hover:bg-white/15 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                                                title="Skip Forward 10s"
+                                            >
+                                                <RotateCw size={16} />
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={handleNext}
                                                 className="p-2 text-white/80 hover:text-white hover:bg-white/15 rounded-lg transition-colors cursor-pointer"
                                                 title="Next Track"
                                             >
                                                 <SkipForward size={18} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const speeds = [1, 1.25, 1.5, 2, 0.75];
+                                                    const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
+                                                    setPlaybackSpeed(speeds[nextIdx]);
+                                                }}
+                                                className="px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                                                title="Change Playback Speed"
+                                            >
+                                                {playbackSpeed}x
                                             </button>
 
                                             {/* Volume in Fullscreen */}
@@ -1145,11 +1180,29 @@ export function MultimediaTab({
 
                                     <button
                                         type="button"
+                                        onClick={() => handleSeek(Math.max(0, currentTime - 10))}
+                                        className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                        title="Skip Back 10s"
+                                    >
+                                        <RotateCcw size={16} />
+                                    </button>
+
+                                    <button
+                                        type="button"
                                         onClick={togglePlayPause}
                                         className="w-12 h-12 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
                                         title={isPlaying ? "Pause" : "Play"}
                                     >
                                         {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSeek(Math.min(duration || Infinity, currentTime + 10))}
+                                        className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                        title="Skip Forward 10s"
+                                    >
+                                        <RotateCw size={16} />
                                     </button>
 
                                     <button
@@ -1171,6 +1224,19 @@ export function MultimediaTab({
                                         title={`Repeat: ${repeatMode}`}
                                     >
                                         {repeatMode === "one" ? <Repeat1 size={15} /> : <Repeat size={15} />}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const speeds = [1, 1.25, 1.5, 2, 0.75];
+                                            const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
+                                            setPlaybackSpeed(speeds[nextIdx]);
+                                        }}
+                                        className="px-2 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
+                                        title="Change Playback Speed"
+                                    >
+                                        {playbackSpeed}x
                                     </button>
                                 </div>
 
