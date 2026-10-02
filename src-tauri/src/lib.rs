@@ -217,6 +217,22 @@ fn get_yt_dlp_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         }
     }
 
+    // 5. Check installed user directory in %LOCALAPPDATA%\Devizee Lite
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+        let install_dir = local_app_data.join("Devizee Lite");
+        let candidates = [
+            install_dir.join("yt-dlp.exe"),
+            install_dir.join("bin").join("yt-dlp.exe"),
+            install_dir.join("yt-dlp-x86_64-pc-windows-msvc.exe"),
+            install_dir.join("bin").join("yt-dlp-x86_64-pc-windows-msvc.exe"),
+        ];
+        for path in candidates {
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+
     // SC-3: refuse to fall back to system PATH. This was the primary attack
     // vector — any writable folder early in PATH (e.g. a hijacked user
     // temp dir) could host a malicious yt-dlp.exe that Devizee would execute
@@ -276,7 +292,27 @@ fn get_ffmpeg_path(app: &tauri::AppHandle) -> Option<PathBuf> {
         cwd.join("src-tauri").join("bin").join("ffmpeg.exe"),
         cwd.join("ffmpeg.exe"),
     ];
-    dev_candidates.into_iter().find(|path| path.exists())
+    if let Some(path) = dev_candidates.into_iter().find(|path| path.exists()) {
+        return Some(path);
+    }
+
+    // 4. Check installed user directory in %LOCALAPPDATA%\Devizee Lite
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+        let install_dir = local_app_data.join("Devizee Lite");
+        let candidates = [
+            install_dir.join("ffmpeg.exe"),
+            install_dir.join("bin").join("ffmpeg.exe"),
+            install_dir.join("ffmpeg-x86_64-pc-windows-msvc.exe"),
+            install_dir.join("bin").join("ffmpeg-x86_64-pc-windows-msvc.exe"),
+        ];
+        for path in candidates {
+            if path.exists() {
+                return Some(path);
+            }
+        }
+    }
+
+    None
 }
 
 /// Checks if a URL belongs to known DRM-restricted subscription services
@@ -1151,7 +1187,7 @@ async fn start_download(
             "--concurrent-fragments",
             "4",
             "--compat-options",
-            "no-youtube-unavailable-videos,no-abort-on-error",
+            "no-youtube-unavailable-videos",
             "--no-abort-on-error",
             "--extractor-args",
             "youtube:player_client=android,web;skip=dash,translated_subs,comments",

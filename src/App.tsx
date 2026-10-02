@@ -2238,8 +2238,10 @@ function detectAudioMime(arr: Uint8Array): string {
         retrySections = `*${formatSecondsToTime(sSec, true)}-${formatSecondsToTime(eSec, true)}`;
       }
     }
-    const cleanFormat = record.format.replace(/\[Clip\s+[^\]]+\]/gi, "").trim();
-    const formatId = record.format_id || (isAudio ? "bestaudio/best" : (cleanFormat.includes("[") ? cleanFormat : "bestvideo+bestaudio/best"));
+    const rawFormatId = record.format_id || "";
+    const formatId = (rawFormatId && !rawFormatId.includes("(") && !rawFormatId.includes(" "))
+      ? rawFormatId
+      : (isAudio ? "bestaudio/best" : "bestvideo+bestaudio/best");
 
     setHistory(prev => prev.map(r => r.id === record.id ? {
       ...r,
@@ -2329,9 +2331,19 @@ function detectAudioMime(arr: Uint8Array): string {
     const isAudio = isAudioFormat(record.format);
     const extMatch = record.format.match(/\(([A-Z0-9]+)\)/i);
     const ext = extMatch ? extMatch[1].toLowerCase() : (isAudio ? "mp3" : "mp4");
-    const formatId = isAudio
-      ? "bestaudio/best"
-      : (record.format.includes("[") ? record.format : "bestvideo+bestaudio/best");
+    const clipMatch = record.format.match(/\[Clip\s+([^-\]]+)-([^\]]+)\]/i);
+    let refreshSections: string | null = null;
+    if (clipMatch) {
+      const sSec = parseTimeToSeconds(clipMatch[1]);
+      const eSec = parseTimeToSeconds(clipMatch[2]);
+      if (eSec > sSec) {
+        refreshSections = `*${formatSecondsToTime(sSec, true)}-${formatSecondsToTime(eSec, true)}`;
+      }
+    }
+    const rawFormatId = record.format_id || "";
+    const formatId = (rawFormatId && !rawFormatId.includes("(") && !rawFormatId.includes(" "))
+      ? rawFormatId
+      : (isAudio ? "bestaudio/best" : "bestvideo+bestaudio/best");
 
     // Optimistically update state so the UI reflects the retry immediately
     setHistory((prev) =>
@@ -2385,7 +2397,7 @@ function detectAudioMime(arr: Uint8Array): string {
         proxy: proxyArg,
         customFlags: settings.customFlags ? settings.customFlags : null,
         scanAntivirus: settings.scanAntivirus,
-        downloadSections: null,
+        downloadSections: refreshSections,
         // "overwrite" here means "keep the .part and continue" — yt-dlp's
         // --force-overwrites flag combined with the existing .part file
         // results in a resume, not a restart.
