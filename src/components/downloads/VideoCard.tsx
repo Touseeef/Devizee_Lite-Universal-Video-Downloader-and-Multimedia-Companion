@@ -997,30 +997,60 @@ export function VideoCard({
                             </div>
 
                             {videoInfo.chapters && videoInfo.chapters.length > 0 && (
-                                <div className="p-2.5 rounded-lg bg-surface-1 border border-border-subtle flex flex-col sm:flex-row sm:items-center gap-2">
-                                    <div className="flex items-center gap-1.5 text-secondary shrink-0 text-caption font-semibold">
-                                        <Bookmark size={13} className="text-accent" />
-                                        <span>Select Chapter:</span>
+                                <div className="p-2.5 rounded-lg bg-surface-1 border border-border-subtle space-y-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                        <div className="flex items-center gap-1.5 text-secondary shrink-0 text-caption font-semibold">
+                                            <Bookmark size={13} className="text-accent" />
+                                            <span>Select Chapter:</span>
+                                        </div>
+                                        <select
+                                            onChange={(e) => {
+                                                const idx = parseInt(e.target.value, 10);
+                                                if (!isNaN(idx) && videoInfo.chapters && videoInfo.chapters[idx]) {
+                                                    const ch = videoInfo.chapters[idx];
+                                                    setTrimStart(formatSecondsToTime(ch.start_time));
+                                                    setTrimEnd(formatSecondsToTime(ch.end_time));
+                                                    if (videoElementRef.current) {
+                                                        videoElementRef.current.currentTime = ch.start_time;
+                                                    }
+                                                }
+                                            }}
+                                            defaultValue=""
+                                            className="flex-1 min-w-0 bg-surface-2 hover:bg-surface-3 border border-border-subtle rounded-md px-2.5 py-1 text-caption text-primary outline-none focus:ring-1 focus:ring-accent cursor-pointer truncate"
+                                        >
+                                            <option value="" disabled>Choose a chapter to auto-fill times ({videoInfo.chapters.length} available)...</option>
+                                            {videoInfo.chapters.map((ch, idx) => (
+                                                <option key={idx} value={idx}>
+                                                    {ch.title} ({formatSecondsToTime(ch.start_time)} - {formatSecondsToTime(ch.end_time)})
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
-                                    <select
-                                        onChange={(e) => {
-                                            const idx = parseInt(e.target.value, 10);
-                                            if (!isNaN(idx) && videoInfo.chapters && videoInfo.chapters[idx]) {
-                                                const ch = videoInfo.chapters[idx];
-                                                setTrimStart(formatSecondsToTime(ch.start_time));
-                                                setTrimEnd(formatSecondsToTime(ch.end_time));
-                                            }
-                                        }}
-                                        defaultValue=""
-                                        className="flex-1 min-w-0 bg-surface-2 hover:bg-surface-3 border border-border-subtle rounded-md px-2.5 py-1 text-caption text-primary outline-none focus:ring-1 focus:ring-accent cursor-pointer truncate"
-                                    >
-                                        <option value="" disabled>Choose a chapter to auto-fill times ({videoInfo.chapters.length} available)...</option>
+
+                                    {/* Quick Chapter Chips Track */}
+                                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                                         {videoInfo.chapters.map((ch, idx) => (
-                                            <option key={idx} value={idx}>
-                                                {ch.title} ({formatSecondsToTime(ch.start_time)} - {formatSecondsToTime(ch.end_time)})
-                                            </option>
+                                            <button
+                                                key={idx}
+                                                type="button"
+                                                onClick={() => {
+                                                    setTrimStart(formatSecondsToTime(ch.start_time));
+                                                    setTrimEnd(formatSecondsToTime(ch.end_time));
+                                                    if (videoElementRef.current) {
+                                                        videoElementRef.current.currentTime = ch.start_time;
+                                                    }
+                                                }}
+                                                className="shrink-0 px-2.5 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle hover:border-accent/40 text-[11px] text-secondary hover:text-primary transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-[0.98]"
+                                                title={`${ch.title} (${formatSecondsToTime(ch.start_time)} - ${formatSecondsToTime(ch.end_time)})`}
+                                            >
+                                                <Bookmark size={10} className="text-accent shrink-0" />
+                                                <span className="font-medium truncate max-w-[130px]">{ch.title}</span>
+                                                <span className="font-mono text-[10px] text-tertiary shrink-0">
+                                                    {formatSecondsToTime(ch.start_time)}
+                                                </span>
+                                            </button>
                                         ))}
-                                    </select>
+                                    </div>
                                 </div>
                             )}
 
