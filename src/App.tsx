@@ -54,6 +54,7 @@ import { SupportedSitesModal } from "./components/common/SupportedSitesModal";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { useThemeManager } from "./hooks/useThemeManager";
 import { useVolumeControl } from "./hooks/useVolumeControl";
+import { useDownloadQueue } from "./hooks/useDownloadQueue";
 
 
 export default function App() {
@@ -76,7 +77,6 @@ export default function App() {
   const [showPreviews, setShowPreviews] = useState(true);
   const [duplicateDialog, setDuplicateDialog] = useState<DuplicateDialogState | null>(null);
   const [refreshUrlDialog, setRefreshUrlDialog] = useState<RefreshUrlDialogState | null>(null);
-  const [selectedHistoryItems, setSelectedHistoryItems] = useState<Set<string>>(new Set());
   const [confirmDialogState, setConfirmDialogState] = useState<{
     isOpen: boolean;
     title: string;
@@ -2413,11 +2413,31 @@ function detectAudioMime(arr: Uint8Array): string {
     return () => window.removeEventListener("message", onMessage);
   }, [videoInfo, transitionPlayback, handleVideoEnded]);
 
-  // Status counters
-  const activeCount = history.filter(h => h.status === "downloading" || h.status === "muxing" || h.status === "starting").length;
-  const queuedCount = history.filter(h => h.status === "queued" || h.status === "fetching_metadata").length;
-  const attentionCount = history.filter(h => h.status === "error" || h.status === "interrupted").length;
-  const completedCount = history.filter(h => h.status === "completed").length;
+  // Status counters & Queue actions via custom hook
+  const {
+    selectedHistoryItems,
+    setSelectedHistoryItems,
+    activeCount,
+    queuedCount,
+    attentionCount,
+    completedCount,
+    firstActiveDownload,
+    handlePauseDownload,
+    handleCancelDownload,
+    handlePauseAll,
+    handleResumeAll,
+    handleCancelAll,
+    handlePauseSelected,
+    handleResumeSelected,
+    handleCancelSelected,
+    handleRemoveSelected,
+    handleDeleteSelected,
+  } = useDownloadQueue({
+    history,
+    loadHistory,
+    handleRetryDownload,
+    userPausedTaskIds,
+  });
 
 
   // Filtered & Sorted history with Real-Time Search & Attention Filter (1h: useMemo)
@@ -2472,121 +2492,6 @@ function detectAudioMime(arr: Uint8Array): string {
     completed: history.filter(h => h.status === "completed"),
   };
 
-  const firstActiveDownload = useMemo(() => {
-    return history.find(h => h.status === "downloading" || h.status === "starting" || h.status === "muxing") || null;
-  }, [history]);
-
-  const handlePauseDownload = async (taskId: string) => {
-    userPausedTaskIds.current.add(taskId);
-    try {
-      await invoke("pause_download", { taskId });
-    } catch (err) {
-      console.error("Pause failed:", err);
-    }
-    loadHistory();
-  };
-
-  const handleCancelDownload = async (taskId: string) => {
-    try {
-      await invoke("cancel_download", { taskId });
-    } catch (err) {
-      console.error("Cancel failed:", err);
-    }
-    loadHistory();
-  };
-
-  const handlePauseAll = async () => {
-    for (const h of history) {
-      if (h.status === "downloading" || h.status === "starting" || h.status === "fetching_metadata" || h.status === "muxing") {
-        userPausedTaskIds.current.add(h.id);
-        try {
-          await invoke("pause_download", { taskId: h.id });
-        } catch { }
-      }
-    }
-    loadHistory();
-  };
-
-  const handleResumeAll = async () => {
-    for (const h of history) {
-      if (h.status === "interrupted" || h.status === "error") {
-        handleRetryDownload(h);
-      }
-    }
-  };
-
-  const handleCancelAll = async () => {
-    for (const h of history) {
-      if (h.status === "downloading" || h.status === "starting" || h.status === "queued" || h.status === "interrupted") {
-        try {
-          await invoke("cancel_download", { taskId: h.id });
-        } catch { }
-      }
-    }
-    loadHistory();
-  };
-
-  const handlePauseSelected = async () => {
-    for (const id of selectedHistoryItems) {
-      const rec = history.find(h => h.id === id);
-      if (rec && (rec.status === "downloading" || rec.status === "starting" || rec.status === "fetching_metadata" || rec.status === "muxing")) {
-        userPausedTaskIds.current.add(id);
-        try {
-          await invoke("pause_download", { taskId: id });
-        } catch { }
-      }
-    }
-    loadHistory();
-  };
-
-  const handleResumeSelected = async () => {
-    for (const id of selectedHistoryItems) {
-      const rec = history.find(h => h.id === id);
-      if (rec && (rec.status === "interrupted" || rec.status === "error")) {
-        handleRetryDownload(rec);
-      }
-    }
-  };
-
-  const handleCancelSelected = async () => {
-    for (const id of selectedHistoryItems) {
-      const rec = history.find(h => h.id === id);
-      if (rec && (rec.status === "downloading" || rec.status === "starting" || rec.status === "queued" || rec.status === "interrupted")) {
-        try {
-          await invoke("cancel_download", { taskId: id });
-        } catch { }
-      }
-    }
-    setSelectedHistoryItems(new Set());
-    loadHistory();
-  };
-
-  const handleRemoveSelected = async () => {
-    for (const id of selectedHistoryItems) {
-      try {
-        await invoke("remove_history_record", { id });
-      } catch { }
-    }
-    setSelectedHistoryItems(new Set());
-    loadHistory();
-  };
-
-  const handleDeleteSelected = async () => {
-    for (const id of selectedHistoryItems) {
-      const rec = history.find(h => h.id === id);
-      if (rec) {
-        try {
-          if (rec.file_path) {
-            await invoke("delete_file_and_record", { id: rec.id, filePath: rec.file_path });
-          } else {
-            await invoke("remove_history_record", { id: rec.id });
-          }
-        } catch { }
-      }
-    }
-    setSelectedHistoryItems(new Set());
-    loadHistory();
-  };
 
   if (isHud) {
     return <ClipboardHud settings={settings} />;
