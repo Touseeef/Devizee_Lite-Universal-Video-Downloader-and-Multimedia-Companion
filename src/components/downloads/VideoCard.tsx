@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { RefObject } from "react";
 import {
     AlertCircle,
+    Bookmark,
     Calendar,
     CheckCircle2,
     Clock,
@@ -970,7 +971,14 @@ export function VideoCard({
                                 title="Trim video segment before downloading without fetching full video"
                             >
                                 <Scissors size={14} className="shrink-0" />
-                                <span>{isTrimming ? "Trimming On" : "Clip Trimmer"}</span>
+                                <span className="flex items-center gap-1.5">
+                                    <span>{isTrimming ? "Trimming On" : "Clip Trimmer"}</span>
+                                    {videoInfo.chapters && videoInfo.chapters.length > 0 && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-accent/20 text-accent font-semibold">
+                                            {videoInfo.chapters.length} chapters
+                                        </span>
+                                    )}
+                                </span>
                             </button>
                         </div>
                     </div>
@@ -987,6 +995,35 @@ export function VideoCard({
                                     Total: {videoInfo.duration_string || formatSecondsToTime(videoInfo.duration || 0, true)}
                                 </span>
                             </div>
+
+                            {videoInfo.chapters && videoInfo.chapters.length > 0 && (
+                                <div className="p-2.5 rounded-lg bg-surface-1 border border-border-subtle flex flex-col sm:flex-row sm:items-center gap-2">
+                                    <div className="flex items-center gap-1.5 text-secondary shrink-0 text-caption font-semibold">
+                                        <Bookmark size={13} className="text-accent" />
+                                        <span>Select Chapter:</span>
+                                    </div>
+                                    <select
+                                        onChange={(e) => {
+                                            const idx = parseInt(e.target.value, 10);
+                                            if (!isNaN(idx) && videoInfo.chapters && videoInfo.chapters[idx]) {
+                                                const ch = videoInfo.chapters[idx];
+                                                setTrimStart(formatSecondsToTime(ch.start_time));
+                                                setTrimEnd(formatSecondsToTime(ch.end_time));
+                                            }
+                                        }}
+                                        defaultValue=""
+                                        className="flex-1 min-w-0 bg-surface-2 hover:bg-surface-3 border border-border-subtle rounded-md px-2.5 py-1 text-caption text-primary outline-none focus:ring-1 focus:ring-accent cursor-pointer truncate"
+                                    >
+                                        <option value="" disabled>Choose a chapter to auto-fill times ({videoInfo.chapters.length} available)...</option>
+                                        {videoInfo.chapters.map((ch, idx) => (
+                                            <option key={idx} value={idx}>
+                                                {ch.title} ({formatSecondsToTime(ch.start_time)} - {formatSecondsToTime(ch.end_time)})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
                             <div className="flex items-center gap-4">
                                 <div className="flex-1 space-y-1.5">
                                     <TimeSegmentInput

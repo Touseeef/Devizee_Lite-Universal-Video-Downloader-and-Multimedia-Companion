@@ -581,10 +581,12 @@ export function SettingsTab({
                                     className="bg-surface-2 border border-border-subtle rounded-md px-3 py-1.5 text-caption font-semibold outline-none text-primary cursor-pointer"
                                 >
                                     <option value="unlimited">{t("settings_speed_unlimited")}</option>
-                                    <option value="1M">1.0 MB/s</option>
-                                    <option value="3M">3.0 MB/s</option>
-                                    <option value="5M">5.0 MB/s</option>
-                                    <option value="10M">10.0 MB/s</option>
+                                    <option value="10M">10.0 MB/s (High Speed)</option>
+                                    <option value="5M">5.0 MB/s (Gaming & Work Mode)</option>
+                                    <option value="3M">3.0 MB/s (Balanced)</option>
+                                    <option value="2M">2.0 MB/s (Eco & Streaming Mode)</option>
+                                    <option value="1M">1.0 MB/s (Night / Low Bandwidth)</option>
+                                    <option value="500K">500 KB/s (Ultra Background Saver)</option>
                                     <option value="custom">{t("settings_speed_custom")}</option>
                                 </select>
                                 {settings.speedLimit === "custom" && (

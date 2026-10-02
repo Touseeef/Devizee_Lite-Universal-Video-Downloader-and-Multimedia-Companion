@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
     AlertTriangle,
     ArrowDownToLine,
+    Gauge,
     Pause,
     Play,
     X,
@@ -65,6 +66,8 @@ export function DownloadsTab({
     onPlayMedia,
     onRemoveSelected,
     onDeleteSelected,
+    speedLimit,
+    onSpeedLimitChange,
 }: {
     t: (key: TranslationKey) => string;
     isOnline: boolean;
@@ -105,6 +108,8 @@ export function DownloadsTab({
     onPlayMedia?: (record: DownloadRecord) => void;
     onRemoveSelected?: () => void;
     onDeleteSelected?: () => void;
+    speedLimit?: string;
+    onSpeedLimitChange?: (limit: string) => void;
 }) {
     // F-36: Dismissible interrupted-downloads recovery banner.
     const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -217,38 +222,58 @@ export function DownloadsTab({
             {/* Global Queue Action Toolbar */}
             <div className="bg-surface-1 rounded-xl p-3 border border-border-subtle flex flex-wrap items-center justify-between gap-3 shadow-2xs">
                 {selectedHistoryItems.size === 0 ? (
-                    /* No Selection: Show bulk "All" actions */
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={onPauseAll}
-                            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
-                            title="Pause all running downloads"
-                        >
-                            <Pause size={13} />
-                            <span>Pause All</span>
-                        </button>
+                    <>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={onPauseAll}
+                                className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
+                                title="Pause all running downloads"
+                            >
+                                <Pause size={13} />
+                                <span>Pause All</span>
+                            </button>
 
-                        <button
-                            type="button"
-                            onClick={onResumeAll}
-                            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
-                            title="Resume all queued and paused downloads"
-                        >
-                            <Play size={13} fill="currentColor" />
-                            <span>Resume All</span>
-                        </button>
+                            <button
+                                type="button"
+                                onClick={onResumeAll}
+                                className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
+                                title="Resume all queued and paused downloads"
+                            >
+                                <Play size={13} fill="currentColor" />
+                                <span>Resume All</span>
+                            </button>
 
-                        <button
-                            type="button"
-                            onClick={onCancelAll}
-                            className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-status-danger-subtle text-caption font-semibold text-secondary hover:text-status-danger flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
-                            title="Cancel all active tasks"
-                        >
-                            <XCircle size={13} />
-                            <span>Cancel All</span>
-                        </button>
-                    </div>
+                            <button
+                                type="button"
+                                onClick={onCancelAll}
+                                className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-status-danger-subtle text-caption font-semibold text-secondary hover:text-status-danger flex items-center gap-1.5 border border-border-subtle transition-colors cursor-pointer"
+                                title="Cancel all active tasks"
+                            >
+                                <XCircle size={13} />
+                                <span>Cancel All</span>
+                            </button>
+                        </div>
+
+                        {/* Bandwidth & Speed Mode Preset Selector */}
+                        <div className="flex items-center gap-2">
+                            <Gauge size={13} className="text-secondary shrink-0" />
+                            <span className="text-[11px] font-semibold text-secondary shrink-0 hidden sm:inline">Speed:</span>
+                            <select
+                                value={speedLimit || "unlimited"}
+                                onChange={(e) => onSpeedLimitChange?.(e.target.value)}
+                                className="h-7 px-2.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-[11px] font-semibold text-primary border border-border-subtle transition-colors cursor-pointer outline-none focus:ring-1 focus:ring-accent"
+                                title="Set global download speed limit"
+                            >
+                                <option value="unlimited">Unlimited (Max)</option>
+                                <option value="10M">10 MB/s (High Speed)</option>
+                                <option value="5M">5 MB/s (Gaming/Work)</option>
+                                <option value="2M">2 MB/s (Eco Mode)</option>
+                                <option value="1M">1 MB/s (Night Saver)</option>
+                                <option value="500K">500 KB/s (Background)</option>
+                            </select>
+                        </div>
+                    </>
                 ) : (
                     /* Items Selected: Show contextual "Selected" actions */
                     <div className="flex flex-wrap items-center gap-2 animate-in fade-in duration-fast">

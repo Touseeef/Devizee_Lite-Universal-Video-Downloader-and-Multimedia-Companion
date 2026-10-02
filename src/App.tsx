@@ -3203,6 +3203,8 @@ function detectAudioMime(arr: Uint8Array): string {
             }}
             onRemoveSelected={handleRemoveSelected}
             onDeleteSelected={handleDeleteSelected}
+            speedLimit={settings.speedLimit || "unlimited"}
+            onSpeedLimitChange={(v) => updateSetting("speedLimit", v)}
           />
         </div>
 
