@@ -450,6 +450,7 @@ export default function App() {
       logLevel: "info",
       downloadSubtitles: true,
       subtitleLanguages: "en.*,en",
+      subtitlesInSubfolder: true,
       allowInsecureSSL: false,
     };
   });
@@ -2205,6 +2206,7 @@ function detectAudioMime(arr: Uint8Array): string {
         estimatedSizeBytes: estimatedSize,
         downloadSubtitles: downloadSubtitlesOverride !== undefined ? downloadSubtitlesOverride : (settings.downloadSubtitles ?? true),
         subtitleLanguages: settings.subtitleLanguages || "all",
+        subtitlesInSubfolder: settings.subtitlesInSubfolder ?? true,
         allowInsecureSsl: settings.allowInsecureSSL || false,
         cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
@@ -2290,6 +2292,7 @@ function detectAudioMime(arr: Uint8Array): string {
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
+        subtitlesInSubfolder: settings.subtitlesInSubfolder ?? true,
         allowInsecureSsl: settings.allowInsecureSSL || false,
         cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
@@ -2405,6 +2408,7 @@ function detectAudioMime(arr: Uint8Array): string {
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
+        subtitlesInSubfolder: settings.subtitlesInSubfolder ?? true,
         allowInsecureSsl: settings.allowInsecureSSL || false,
         cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });

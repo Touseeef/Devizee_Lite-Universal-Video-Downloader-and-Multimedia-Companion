@@ -28,6 +28,14 @@ pub struct FormatOption {
     pub filesize_approx: Option<u64>,
 }
 
+/// Chapter marker extracted from video metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Chapter {
+    pub start_time: f64,
+    pub end_time: f64,
+    pub title: String,
+}
+
 /// Normalized video metadata returned to the frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoInfo {
@@ -45,6 +53,8 @@ pub struct VideoInfo {
     pub has_subtitles: Option<bool>,
     #[serde(default)]
     pub subtitle_languages: Option<Vec<String>>,
+    #[serde(default)]
+    pub chapters: Option<Vec<Chapter>>,
 }
 
 /// Progress event emitted to the frontend in real time
@@ -592,6 +602,21 @@ async fn fetch_video_info(
     }
     let has_subtitles = !sub_langs.is_empty();
 
+    let chapters = json_val["chapters"].as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|ch| {
+                let start = ch["start_time"].as_f64()?;
+                let end = ch["end_time"].as_f64().unwrap_or(start);
+                let title = ch["title"].as_str().unwrap_or("Chapter").to_string();
+                Some(Chapter {
+                    start_time: start,
+                    end_time: end,
+                    title,
+                })
+            })
+            .collect::<Vec<_>>()
+    });
+
     Ok(VideoInfo {
         id,
         title,
@@ -605,6 +630,7 @@ async fn fetch_video_info(
         formats,
         has_subtitles: Some(has_subtitles),
         subtitle_languages: Some(sub_langs),
+        chapters,
     })
 }
 
@@ -1001,6 +1027,7 @@ async fn start_download(
     estimated_size_bytes: Option<u64>,
     download_subtitles: Option<bool>,
     subtitle_languages: Option<String>,
+    subtitles_in_subfolder: Option<bool>,
     allow_insecure_ssl: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -1269,11 +1296,13 @@ async fn start_download(
         }
 
         if !is_audio_only && download_subtitles.unwrap_or(false) && download_sections.is_none() {
-            // Route all standalone subtitle (.vtt/.srt) files into a dedicated "subtitles" subfolder
-            // inside the video download directory so they don't clutter the main videos folder.
-            let subs_dir = download_dir.join("subtitles");
-            let _ = std::fs::create_dir_all(&subs_dir);
-            cmd.args(["-P", &format!("subtitle:{}", subs_dir.to_string_lossy())]);
+            if subtitles_in_subfolder.unwrap_or(true) {
+                // Route all standalone subtitle (.vtt/.srt) files into a dedicated "subtitles" subfolder
+                // inside the video download directory so they don't clutter the main videos folder.
+                let subs_dir = download_dir.join("subtitles");
+                let _ = std::fs::create_dir_all(&subs_dir);
+                cmd.args(["-P", &format!("subtitle:{}", subs_dir.to_string_lossy())]);
+            }
 
             let langs = subtitle_languages
                 .as_deref()
@@ -1676,8 +1705,8 @@ async fn start_download(
 
         let mut final_file_path = None;
 
-        // ─── F-24: Throttle progress DB writes ───
-        // yt-dlp emits DEVIZEE_PROGRESS lines many times per second. Writing
+        // ─── F-24: Throttle progress DB writes & IPC emits ───
+        // yt-dlp emits DEVIZEE_PROGRESS lines dozens of times per second. Writing
         // to SQLite on every tick blocks the DB mutex under multi-download
         // load and stalls the UI. We write to the DB at most once per second
         // per task, PLUS immediately whenever the status changes (Downloading
@@ -1688,6 +1717,12 @@ async fn start_download(
             .unwrap_or_else(std::time::Instant::now);
         let mut last_db_status: Option<DownloadStatus> = None;
         const DB_WRITE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1000);
+
+        let mut last_ipc_emit = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_millis(500))
+            .unwrap_or_else(std::time::Instant::now);
+        let mut last_ipc_percent: f32 = -1.0;
+        const IPC_EMIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(180);
 
         let is_multi_stream = !is_audio_only
             && (format_id.contains('+')
@@ -1780,24 +1815,31 @@ async fn start_download(
 
                         let status = DownloadStatus::Downloading;
 
-                        // Always emit to the frontend for a live progress bar.
-                        let _ = app_clone.emit(
-                            "download-progress",
-                            DownloadProgressPayload {
-                                task_id: task_id_clone.clone(),
-                                percent,
-                                speed,
-                                eta,
-                                status: status.clone(),
-                                error_code: None,
-                                error: None,
-                                file_path: None,
-                            },
-                        );
+                        let now = std::time::Instant::now();
+                        let should_emit_ipc = now.duration_since(last_ipc_emit) >= IPC_EMIT_INTERVAL
+                            || (percent - last_ipc_percent).abs() >= 1.0
+                            || percent >= 99.0;
+
+                        if should_emit_ipc {
+                            last_ipc_emit = now;
+                            last_ipc_percent = percent;
+                            let _ = app_clone.emit(
+                                "download-progress",
+                                DownloadProgressPayload {
+                                    task_id: task_id_clone.clone(),
+                                    percent,
+                                    speed,
+                                    eta,
+                                    status: status.clone(),
+                                    error_code: None,
+                                    error: None,
+                                    file_path: None,
+                                },
+                            );
+                        }
 
                         // F-24: Throttle DB writes — status change flushes
                         // immediately, otherwise at most once per second.
-                        let now = std::time::Instant::now();
                         let status_changed = last_db_status.as_ref() != Some(&status);
                         let interval_elapsed =
                             now.duration_since(last_db_write) >= DB_WRITE_INTERVAL;
@@ -3410,11 +3452,12 @@ fn handle_bridge_connection(
     }
 
     if path == "/status" || path == "/ping" {
+        let app_version = app.package_info().version.to_string();
         let body = serde_json::json!({
             "status": "ok",
             "app": "Devizee Lite",
             "port": 42421,
-            "version": "0.5.1"
+            "version": app_version
         }).to_string();
         let resp = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",

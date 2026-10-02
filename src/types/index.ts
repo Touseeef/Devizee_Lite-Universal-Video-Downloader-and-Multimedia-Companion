@@ -9,6 +9,12 @@ export type FormatOption = {
     filesize_approx: number | null;
 };
 
+export type Chapter = {
+    start_time: number;
+    end_time: number;
+    title: string;
+};
+
 export type VideoInfo = {
     id: string;
     title: string;
@@ -22,6 +28,7 @@ export type VideoInfo = {
     formats: FormatOption[];
     has_subtitles?: boolean;
     subtitle_languages?: string[];
+    chapters?: Chapter[];
 };
 
 export type PlaylistEntry = {
