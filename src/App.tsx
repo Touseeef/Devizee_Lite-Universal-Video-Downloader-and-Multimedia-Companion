@@ -51,6 +51,9 @@ import { ClipboardHud } from "./components/hud/ClipboardHud";
 import { BatchQueuePanel, type BatchItem } from "./components/downloads/BatchQueuePanel";
 import { WelcomeModal } from "./components/common/WelcomeModal";
 import { SupportedSitesModal } from "./components/common/SupportedSitesModal";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
+import { useThemeManager } from "./hooks/useThemeManager";
+import { useVolumeControl } from "./hooks/useVolumeControl";
 
 
 export default function App() {
@@ -326,16 +329,6 @@ export default function App() {
   };
 
 
-  // W3-9: Network status — tracks navigator.onLine for download UX
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
-
-  // Global Volume State (Persisted)
-  const [volume, setVolume] = useState<number>(() => {
-    const saved = localStorage.getItem("devizee_volume");
-    return saved !== null ? parseFloat(saved) : 0.8;
-  });
-  const [isMuted, setIsMuted] = useState(false);
-
   // Clip-Before-Download (Trimming USP) State
   const [isTrimming, setIsTrimming] = useState(false);
   const [trimStart, setTrimStart] = useState("00:00");
@@ -455,8 +448,6 @@ export default function App() {
     };
   });
 
-  const [theme, setTheme] = useState<string>(() => settings.theme || localStorage.getItem("devizee_theme") || "dark");
-
   // Keep refs in sync with latest state / callbacks so the download-progress
   // listener can schedule retries without stale closures.
   useEffect(() => {
@@ -471,18 +462,21 @@ export default function App() {
     });
   };
 
-  const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme);
-    updateSetting("theme", newTheme);
-  };
-
-  // Immediate theme application (supports all 5 themes and sets data-theme attribute)
-  useEffect(() => {
-    localStorage.setItem("devizee_theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-    // Light mode is the only non-dark theme; OLED, Sunset, and Frost are dark-variant themes
-    document.documentElement.classList.toggle("dark", theme !== "light");
-  }, [theme]);
+  // Custom Hooks: Modular Theme, Network, and Consolidated Volume Management
+  const { theme, handleThemeChange } = useThemeManager(settings.theme, updateSetting);
+  const { isOnline } = useNetworkStatus({ isHud, showNotifications: settings.showNotifications });
+  const {
+    volume,
+    isMuted,
+    handleVolumeChange,
+    toggleMute,
+  } = useVolumeControl({
+    audioRef,
+    videoElementRef,
+    sendIframeCommand,
+    updateSetting,
+    activeVideoPlaying,
+  });
 
   // Fullscreen change listener
   useEffect(() => {
@@ -492,96 +486,6 @@ export default function App() {
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
   }, []);
-
-  // W3-9: online/offline detection + notifications
-  useEffect(() => {
-    // SC-2: HUD does not need connectivity events.
-    if (isHud) return;
-
-    let wentOffline = false;
-
-    const goOnline = () => {
-      setIsOnline(true);
-      if (wentOffline && settings.showNotifications) {
-        sendNotification({
-          title: "Devizee - Connection Restored",
-          body: "Downloads are resuming automatically.",
-        });
-      }
-      wentOffline = false;
-    };
-    const goOffline = () => {
-      setIsOnline(false);
-      wentOffline = true;
-      if (settings.showNotifications) {
-        sendNotification({
-          title: "Devizee - No Internet Connection",
-          body: "Active downloads are paused. They will resume automatically when the connection returns.",
-        });
-      }
-    };
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.showNotifications]);
-
-  // Single Consolidated Volume Controller
-  const volumeDebounceTimer = useRef<any>(null);
-  const handleVolumeChange = (newVol: number) => {
-    const clamped = Math.max(0, Math.min(1, newVol));
-    console.log("[Devizee Volume] change to", clamped, {
-      hasAudioRef: !!audioRef.current,
-      hasVideoRef: !!videoElementRef.current,
-    });
-    setVolume(clamped);
-    setIsMuted(clamped === 0);
-    if (audioRef.current) audioRef.current.volume = clamped;
-    if (videoElementRef.current) videoElementRef.current.volume = clamped;
-    sendIframeCommand("setVolume", [Math.round(clamped * 100)]);
-    if (clamped === 0) {
-      sendIframeCommand("mute");
-    } else {
-      sendIframeCommand("unMute");
-    }
-    if (volumeDebounceTimer.current) clearTimeout(volumeDebounceTimer.current);
-    volumeDebounceTimer.current = setTimeout(() => {
-      localStorage.setItem("devizee_volume", clamped.toString());
-      updateSetting("volume", clamped);
-    }, 250);
-  };
-
-  const toggleMute = () => {
-    if (isMuted) {
-      setIsMuted(false);
-      const restore = volume > 0 ? volume : 0.8;
-      if (audioRef.current) audioRef.current.volume = restore;
-      if (videoElementRef.current) videoElementRef.current.volume = restore;
-      sendIframeCommand("unMute");
-      sendIframeCommand("setVolume", [Math.round(restore * 100)]);
-    } else {
-      setIsMuted(true);
-      if (audioRef.current) audioRef.current.volume = 0;
-      if (videoElementRef.current) videoElementRef.current.volume = 0;
-      sendIframeCommand("mute");
-    }
-  };
-
-  // Sync volume to audio/video elements and iframe on state change or mount
-  useEffect(() => {
-    const effective = isMuted ? 0 : volume;
-    if (audioRef.current) audioRef.current.volume = effective;
-    if (videoElementRef.current) videoElementRef.current.volume = effective;
-    sendIframeCommand("setVolume", [Math.round(effective * 100)]);
-    if (isMuted || effective === 0) {
-      sendIframeCommand("mute");
-    } else {
-      sendIframeCommand("unMute");
-    }
-  }, [volume, isMuted, activeVideoPlaying]);
 
   // Unified Fullscreen Exit & Close Handlers
   const exitFullscreenAndKeepPlaying = () => {
@@ -665,34 +569,6 @@ export default function App() {
     (document.documentElement.style as any).zoom = "";
     document.documentElement.style.fontSize = `${(zoomLevel / 100) * 16}px`;
   }, [zoomLevel]);
-
-
-  useEffect(() => {
-    const goOnline = () => {
-      setIsOnline(true);
-      if (settings.showNotifications) {
-        sendNotification({
-          title: "Devizee - Connection Restored",
-          body: "Downloads are resuming automatically.",
-        });
-      }
-    };
-    const goOffline = () => {
-      setIsOnline(false);
-      if (settings.showNotifications) {
-        sendNotification({
-          title: "Devizee - No Internet Connection",
-          body: "Active downloads are paused. They will resume automatically when the connection returns.",
-        });
-      }
-    };
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, [settings.showNotifications]);
 
   // Keyboard Shortcuts Handler
   useEffect(() => {
