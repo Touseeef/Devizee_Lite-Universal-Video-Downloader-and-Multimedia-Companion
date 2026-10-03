@@ -1204,28 +1204,34 @@ export function SettingsTab({
                         </div>
 
                         <p className="text-body-sm text-secondary leading-relaxed">
-                            Engineered from the ground up to replace bloated, ad-ridden web downloaders and prior-art GUIs.
-                            Devizee runs sidecar binaries with Windows Job Objects isolation, zero network proxies, and zero tracking.
+                            Engineered from the ground up to eliminate bloated, ad-ridden web downloaders and slow, clunky GUIs.
+                            Devizee combines a sandboxed native engine with an intelligent browser companion extension, local loopback zero-cloud relay, and an integrated multimedia hub with an 8-band hardware-accelerated equalizer.
                         </p>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                            <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
                                 <span className="text-[12px] font-bold text-primary flex items-center gap-1.5">
-                                    <Shield size={13} className="text-accent" /> Zero Telemetry (NFR-6)
+                                    <Shield size={13} className="text-accent" /> Zero Telemetry
                                 </span>
-                                <p className="text-[11px] text-tertiary">Zero background pingbacks, zero analytics, pure local execution.</p>
+                                <p className="text-[11px] text-tertiary">100% local processing, zero analytics, no user tracking, no cloud servers.</p>
                             </div>
-                            <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
                                 <span className="text-[12px] font-bold text-primary flex items-center gap-1.5">
-                                    <Cpu size={13} className="text-accent" /> Process Sandboxing (NFR-4)
+                                    <Cpu size={13} className="text-accent" /> Job Objects Sandbox
                                 </span>
-                                <p className="text-[11px] text-tertiary">Windows Job Objects guarantees child ffmpeg & yt-dlp clean termination.</p>
+                                <p className="text-[11px] text-tertiary">Windows Job Objects guarantees child yt-dlp & ffmpeg processes cleanly terminate.</p>
                             </div>
-                            <div className="p-3 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
                                 <span className="text-[12px] font-bold text-primary flex items-center gap-1.5">
-                                    <Sparkles size={13} className="text-accent" /> Creator & Architect
+                                    <Globe size={13} className="text-accent" /> Browser-to-Desktop Relay
                                 </span>
-                                <p className="text-[11px] text-tertiary">Crafted by Touseef • Dedicated to clean desktop engineering.</p>
+                                <p className="text-[11px] text-tertiary">Manifest V3 extension with crosshair sniffer and zero-cloud 127.0.0.1 bridge.</p>
+                            </div>
+                            <div className="p-3.5 rounded-xl bg-surface-2 border border-border-subtle/60 space-y-1">
+                                <span className="text-[12px] font-bold text-primary flex items-center gap-1.5">
+                                    <Sliders size={13} className="text-accent" /> 8-Band Equalizer Suite
+                                </span>
+                                <p className="text-[11px] text-tertiary">Web Audio API equalizer, custom preset manager, volume boost & live waveform.</p>
                             </div>
                         </div>
                     </div>
@@ -1291,62 +1297,140 @@ Privacy: Zero telemetry. All processing local.`}
                         </pre>
                     </div>
 
-                    {/* Devizee Lite vs All-In-One (AIO) Roadmap Matrix */}
+                    {/* Devizee Lite vs Devizee Pro (All-In-One Suite) Roadmap Matrix */}
                     <div className="p-6 bg-surface-1 rounded-2xl border border-border-subtle shadow-sm space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                                <h3 className="font-bold text-body text-primary">Product Roadmap: Devizee Lite vs Devizee All-In-One (AIO)</h3>
-                                <p className="text-caption text-secondary">Phased roadmap ensuring rock-solid stability before full suite launch</p>
+                                <h3 className="font-bold text-body text-primary">Product Roadmap: Devizee Lite vs Devizee Pro (All-In-One Suite)</h3>
+                                <p className="text-caption text-secondary">Architectural comparison and phased evolution from Lite to Pro</p>
                             </div>
+                            <span className="px-2.5 py-1 rounded-full bg-accent/15 text-accent text-[11px] font-bold border border-accent/20">
+                                Phase 1 & 2 Shipped
+                            </span>
                         </div>
 
                         <div className="overflow-x-auto rounded-xl border border-border-subtle/80">
                             <table className="w-full text-left border-collapse text-caption">
                                 <thead>
                                     <tr className="bg-surface-2/80 border-b border-border-subtle text-secondary font-bold">
-                                        <th className="p-3">Capability / Feature</th>
-                                        <th className="p-3">Devizee Lite (Current)</th>
-                                        <th className="p-3 text-accent">Devizee AIO (Phase 2 Master)</th>
+                                        <th className="p-3">Capability / Dimension</th>
+                                        <th className="p-3">Devizee Lite (Current · v0.7.2)</th>
+                                        <th className="p-3 text-accent">Devizee Pro (All-In-One Suite)</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border-subtle/60 text-secondary">
                                     <tr className="hover:bg-surface-2/40 transition-colors">
                                         <td className="p-3 font-semibold text-primary">Core Purpose</td>
-                                        <td className="p-3">Universal Video & Audio Downloader</td>
-                                        <td className="p-3 font-semibold text-accent">All-In-One Multi-Protocol Download Manager</td>
+                                        <td className="p-3 font-medium text-status-success">Universal Video, Audio & Playlist Downloader + Multimedia Companion</td>
+                                        <td className="p-3 font-semibold text-accent">Full-Spectrum Multi-Protocol Download Manager (IDM-Class + Torrents)</td>
                                     </tr>
                                     <tr className="hover:bg-surface-2/40 transition-colors">
-                                        <td className="p-3 font-semibold text-primary">Media Sources</td>
-                                        <td className="p-3">YouTube, TikTok, Instagram, X, FB, Twitch (yt-dlp)</td>
-                                        <td className="p-3 font-semibold text-accent">Streaming Sites + Direct Files (ZIP, ISO, EXE, PDF)</td>
+                                        <td className="p-3 font-semibold text-primary">Media & File Sources</td>
+                                        <td className="p-3">1,000+ streaming sites (YouTube up to 8K, TikTok, IG, X, FB, Twitch, Reddit, SoundCloud, Bilibili)</td>
+                                        <td className="p-3 font-semibold text-accent">Streaming sites + Direct file downloads (ISO, ZIP, EXE, PDF) + BitTorrent / Magnets</td>
                                     </tr>
                                     <tr className="hover:bg-surface-2/40 transition-colors">
                                         <td className="p-3 font-semibold text-primary">Multi-Segment Acceleration</td>
-                                        <td className="p-3 text-tertiary">Direct Stream (Single Pipe)</td>
-                                        <td className="p-3 font-semibold text-accent">16–32 Simultaneous HTTP Range Chunks (IDM-class)</td>
+                                        <td className="p-3 text-tertiary">Direct Stream (Single Pipe) with .part file automatic resumption</td>
+                                        <td className="p-3 font-semibold text-accent">16–32 Simultaneous HTTP Range Chunks with dynamic connection splitting</td>
                                     </tr>
                                     <tr className="hover:bg-surface-2/40 transition-colors">
                                         <td className="p-3 font-semibold text-primary">Browser Companion Extension</td>
-                                        <td className="p-3 text-tertiary">Batch URL Paste & TXT Import Modal</td>
-                                        <td className="p-3 font-semibold text-accent">Manifest V3 Native Relay & Webpage Link Grabber</td>
+                                        <td className="p-3 font-medium text-status-success">Shipped: Manifest V3 with Crosshair Sniffer, Multi-Media Radar & "Now Playing" Radar</td>
+                                        <td className="p-3 font-semibold text-accent">Deep DOM webpage link grabber, batch file sniffer & automatic download interception</td>
                                     </tr>
                                     <tr className="hover:bg-surface-2/40 transition-colors">
-                                        <td className="p-3 font-semibold text-primary">Auto-Sorting ("Exclude Multimedia")</td>
-                                        <td className="p-3 text-tertiary">Dedicated Videos & Audio Folders</td>
-                                        <td className="p-3 font-semibold text-accent">Smart Content-Type Router & "Exclude Multimedia" filter</td>
+                                        <td className="p-3 font-semibold text-primary">Visual Trimming & Subtitles</td>
+                                        <td className="p-3 font-medium text-status-success">Interactive Range Trimmer (start/end sliders, 30s/60s/5m presets) + Subtitle Downloader</td>
+                                        <td className="p-3 font-semibold text-accent">Multi-segment clip batcher, lossy/lossless transcode presets & chapter splitter</td>
                                     </tr>
                                     <tr className="hover:bg-surface-2/40 transition-colors">
                                         <td className="p-3 font-semibold text-primary">Sound & Equalizer Engine</td>
-                                        <td className="p-3 font-semibold text-status-success">8-Band Hardware EQ & Audio Previews</td>
-                                        <td className="p-3 font-semibold text-accent">Full AcoustID Metadata Tagger & Library Hub</td>
+                                        <td className="p-3 font-medium text-status-success">8-Band Hardware EQ, Custom Preset Saving, Volume Booster & Live Waveform</td>
+                                        <td className="p-3 font-semibold text-accent">AcoustID audio fingerprinting, automatic ID3 tagger & album art grabber</td>
+                                    </tr>
+                                    <tr className="hover:bg-surface-2/40 transition-colors">
+                                        <td className="p-3 font-semibold text-primary">Automated Scheduling & Routing</td>
+                                        <td className="p-3 text-tertiary">Multi-item queue with bulk pause/resume/delete + Speed Limiter toggle</td>
+                                        <td className="p-3 font-semibold text-accent">Quiet-hours scheduler (off-peak overnight downloads), auto-shutdown & smart folder router</td>
                                     </tr>
                                     <tr className="hover:bg-surface-2/40 transition-colors">
                                         <td className="p-3 font-semibold text-primary">Privacy & Sandboxing</td>
-                                        <td className="p-3 font-semibold text-status-success">100% Local, Job Objects, Zero Tracking</td>
-                                        <td className="p-3 font-semibold text-status-success">100% Local, Job Objects, Zero Tracking</td>
+                                        <td className="p-3 font-medium text-status-success">100% Local, Windows Job Objects isolation, zero telemetry, zero tracking</td>
+                                        <td className="p-3 font-medium text-status-success">100% Local, Job Objects isolation, optional private cloud auto-sync (Drive/NAS)</td>
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    {/* Phased Strategic Roadmap */}
+                    <div className="p-6 bg-surface-1 rounded-2xl border border-border-subtle shadow-sm space-y-4">
+                        <div>
+                            <h3 className="font-bold text-body text-primary">Strategic Release Roadmap</h3>
+                            <p className="text-caption text-secondary">Current delivery status and active engineering milestones</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Phase 1 */}
+                            <div className="p-4 rounded-xl bg-surface-2/70 border border-status-success/30 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-caption font-bold text-status-success flex items-center gap-1.5">
+                                        <Check size={14} className="text-status-success" /> Phase 1: Devizee Lite Core
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-status-success/15 text-status-success uppercase">
+                                        Shipped · v0.7.2
+                                    </span>
+                                </div>
+                                <p className="text-[12px] text-secondary">
+                                    Tauri v2 + Rust native core with Windows Job Objects process isolation. Universal media extraction across 1,000+ streaming sites up to 8K 60fps HDR, studio audio extraction (FLAC, MP3 320k, WAV, Opus), visual range trimmer, multi-language subtitle download, built-in multimedia player with 8-band hardware-accelerated equalizer, custom user preset saving, volume booster, and in-app one-click yt-dlp core updates.
+                                </p>
+                            </div>
+
+                            {/* Phase 2 */}
+                            <div className="p-4 rounded-xl bg-surface-2/70 border border-status-success/30 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-caption font-bold text-status-success flex items-center gap-1.5">
+                                        <Check size={14} className="text-status-success" /> Phase 2: Companion Browser Extension
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-status-success/15 text-status-success uppercase">
+                                        Shipped · v1.1
+                                    </span>
+                                </div>
+                                <p className="text-[12px] text-secondary">
+                                    Full Manifest V3 extension across Chrome, Edge, Brave, Opera, and Vivaldi. Features the interactive Crosshair Element Sniffer with on-hover targeting, page Multi-Media Radar with live "Now Playing" playback detection, floating video grabber pill with vector SVG icons, zero-cloud local loopback HTTP relay (127.0.0.1:42421), custom devizee:// protocol handler, and 4 synchronized UI themes.
+                                </p>
+                            </div>
+
+                            {/* Phase 3 */}
+                            <div className="p-4 rounded-xl bg-surface-2/70 border border-accent/40 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-caption font-bold text-accent flex items-center gap-1.5">
+                                        <RefreshCw size={14} className="text-accent animate-spin" /> Phase 3: Pro Multi-Segment Engine
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-accent/20 text-accent uppercase">
+                                        In Development
+                                    </span>
+                                </div>
+                                <p className="text-[12px] text-secondary">
+                                    High-throughput 16–32 parallel HTTP range chunk multi-segment download engine. Generic direct file downloading (ZIP, ISO, EXE, PDF, DMG) with dynamic connection splitting, intelligent socket pooling, per-task bandwidth shaping, and direct IDM replacement capabilities.
+                                </p>
+                            </div>
+
+                            {/* Phase 4 */}
+                            <div className="p-4 rounded-xl bg-surface-2/70 border border-border-subtle/80 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-caption font-bold text-tertiary flex items-center gap-1.5">
+                                        <Clock size={14} /> Phase 4: BitTorrent & Cloud Ecosystem
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-surface-3 text-secondary uppercase">
+                                        Planned
+                                    </span>
+                                </div>
+                                <p className="text-[12px] text-secondary">
+                                    Rust-native BitTorrent / Magnet protocol client (rqbit sidecar engine), automated off-peak overnight download scheduling with post-task system sleep/shutdown, AcoustID automatic audio metadata & album art tagger, and automated background sync to private cloud storage (Google Drive, OneDrive, Nextcloud, local NAS).
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
