@@ -26,6 +26,8 @@ pub struct DownloadProgressPayload {
     pub error_code: Option<String>,
     pub error: Option<String>,
     pub file_path: Option<String>,
+    pub downloaded_bytes: Option<String>,
+    pub total_bytes: Option<String>,
 }
 
 pub(crate) fn categorize_error(stderr: &str) -> &'static str {
@@ -508,6 +510,8 @@ pub async fn start_download(
             error_code: None,
             error: None,
             file_path: None,
+            downloaded_bytes: None,
+            total_bytes: None,
         },
     );
 
@@ -533,7 +537,7 @@ pub async fn start_download(
         let _permit = _permit;
         let download_start_time = std::time::Instant::now();
         let mut cmd = Command::new(&yt_dlp_path);
-        let progress_template = "DEVIZEE_PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s";
+        let progress_template = "DEVIZEE_PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._downloaded_bytes_str)s|%(progress._total_bytes_str)s|%(progress._total_bytes_estimate_str)s";
 
         cmd.env("PYTHONIOENCODING", "utf-8");
         cmd.args([
@@ -845,6 +849,8 @@ pub async fn start_download(
                         error_code: Some("spawn_failed".to_string()),
                         error: Some(err_str.clone()),
                         file_path: None,
+                        downloaded_bytes: None,
+                        total_bytes: None,
                     },
                 );
                 if let Some(state) = app_clone.try_state::<AppState>() {
@@ -884,6 +890,8 @@ pub async fn start_download(
                 error_code: None,
                 error: None,
                 file_path: None,
+                downloaded_bytes: None,
+                total_bytes: None,
             },
         );
 
@@ -975,6 +983,8 @@ pub async fn start_download(
                                 since_last
                             )),
                             file_path: None,
+                            downloaded_bytes: None,
+                            total_bytes: None,
                         },
                     );
 
@@ -1126,6 +1136,35 @@ pub async fn start_download(
                         let speed = parts[1].trim().to_string();
                         let raw_eta = parts[2].trim().to_string();
 
+                        let downloaded_bytes = if parts.len() > 3 {
+                            let s = parts[3].trim();
+                            if s != "NA" && !s.is_empty() {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        let total_bytes = if parts.len() > 4 {
+                            let s = parts[4].trim();
+                            if s != "NA" && !s.is_empty() {
+                                Some(s.to_string())
+                            } else if parts.len() > 5 {
+                                let est = parts[5].trim();
+                                if est != "NA" && !est.is_empty() {
+                                    Some(format!("~{}", est))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
                         // Multi-stream DASH smooth scaling:
                         // Accurately tracks actual stream count (e.g. YouTube DASH video+audio = 2, TikTok single = 1)
                         // Stream 1 (video) is ~85% of total download.
@@ -1177,6 +1216,8 @@ pub async fn start_download(
                                     error_code: None,
                                     error: None,
                                     file_path: None,
+                                    downloaded_bytes,
+                                    total_bytes,
                                 },
                             );
                         }
@@ -1229,6 +1270,8 @@ pub async fn start_download(
                             error_code: None,
                             error: None,
                             file_path: final_file_path.clone(),
+                            downloaded_bytes: None,
+                            total_bytes: None,
                         },
                     );
                     if let Some(state) = app_clone.try_state::<AppState>() {
@@ -1371,6 +1414,8 @@ pub async fn start_download(
                     error_code: None,
                     error: None,
                     file_path: final_file_path.clone(),
+                    downloaded_bytes: None,
+                    total_bytes: None,
                 },
             );
             if let Some(state) = app_clone.try_state::<AppState>() {
@@ -1401,6 +1446,8 @@ pub async fn start_download(
                     error_code: Some(error_code.to_string()),
                     error: Some(logs.clone()),
                     file_path: None,
+                    downloaded_bytes: None,
+                    total_bytes: None,
                 },
             );
             if let Some(state) = app_clone.try_state::<AppState>() {
@@ -1482,6 +1529,8 @@ pub async fn pause_download(
             error_code: None,
             error: None,
             file_path: None,
+            downloaded_bytes: None,
+            total_bytes: None,
         },
     );
 
@@ -1542,6 +1591,8 @@ pub async fn cancel_download(
             error_code: None,
             error: None,
             file_path: None,
+            downloaded_bytes: None,
+            total_bytes: None,
         },
     );
 

@@ -1278,6 +1278,8 @@ export default function App() {
           file_path: p.file_path || newHistory[idx].file_path,
           error_code: p.error_code || newHistory[idx].error_code,
           error_message: p.error || newHistory[idx].error_message,
+          downloaded_bytes: p.downloaded_bytes || newHistory[idx].downloaded_bytes,
+          total_bytes: p.total_bytes || newHistory[idx].total_bytes,
         };
         return newHistory;
       });

@@ -583,3 +583,13 @@
   animation: indeterminate-sweep 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
   will-change: transform;
 }
+
+/* Fullscreen player edge-to-edge flush styling */
+:fullscreen,
+::backdrop {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: none !important;
+  background-color: #000000 !important;
+}

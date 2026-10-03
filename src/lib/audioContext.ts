@@ -90,9 +90,15 @@ export function attachEqualizerToMedia(element: HTMLMediaElement): boolean {
         const filters: BiquadFilterNode[] = [];
         for (let i = 0; i < EQ_FREQUENCIES.length; i++) {
             const f = ctx.createBiquadFilter();
-            f.type = "peaking";
+            if (i === 0) {
+                f.type = "lowshelf";
+            } else if (i === EQ_FREQUENCIES.length - 1) {
+                f.type = "highshelf";
+            } else {
+                f.type = "peaking";
+                f.Q.value = 1.0;
+            }
             f.frequency.value = EQ_FREQUENCIES[i];
-            f.Q.value = 1.0;
             f.gain.value = currentEqGains[i] ?? 0;
             filters.push(f);
         }
@@ -127,8 +133,10 @@ export function setGlobalEqualizerGains(gains: number[]) {
     currentEqGains = [...gains];
     try { localStorage.setItem("devizee_eq_bands", JSON.stringify(gains)); } catch { }
 
-    const ctx = globalAudioState.ctx;
-    const now = ctx ? ctx.currentTime : 0;
+    const ctx = ensureAudioContext();
+    if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => { });
+    }
 
     // Clean up orphaned filter chains before iterating
     const toRemove: BiquadFilterNode[][] = [];
@@ -136,11 +144,9 @@ export function setGlobalEqualizerGains(gains: number[]) {
         try {
             filters.forEach((filter, idx) => {
                 const val = gains[idx] ?? 0;
-                if (ctx) {
-                    filter.gain.setTargetAtTime(val, now, 0.03);
-                } else {
+                try {
                     filter.gain.value = val;
-                }
+                } catch { }
             });
         } catch {
             // Filter chain is orphaned/disconnected — mark for removal

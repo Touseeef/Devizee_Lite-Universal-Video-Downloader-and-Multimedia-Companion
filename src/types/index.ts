@@ -60,6 +60,8 @@ export type DownloadRecord = {
     date_added: number;
     hidden: boolean;
     file_size?: number | null;
+    downloaded_bytes?: string;
+    total_bytes?: string;
     error_code?: ErrorCode;
     error_message?: string;
     thumbnail?: string | null;

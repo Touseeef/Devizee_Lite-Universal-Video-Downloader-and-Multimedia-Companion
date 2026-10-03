@@ -1109,6 +1109,8 @@ pub fn run() {
                                             error_code: None,
                                             error: None,
                                             file_path: None,
+                                            downloaded_bytes: None,
+                                            total_bytes: None,
                                         },
                                     );
                                 }

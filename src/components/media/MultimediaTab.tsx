@@ -592,6 +592,11 @@ export function MultimediaTab({
                 return;
             }
             el.pause();
+            const ctx = ensureAudioContext();
+            if (ctx && ctx.state === "suspended") {
+                ctx.resume().catch(() => { });
+            }
+            attachEqualizerToMedia(el);
             el.src = src;
             el.volume = isMuted ? 0 : volume;
             routeAudioDevice(selectedAudioDevice || "default", el);
@@ -687,7 +692,15 @@ export function MultimediaTab({
         const isVid = isVideoFormat(activePlayingItem.format);
         const element = isVid ? videoRef.current : audioRef.current;
         if (element) {
-            element.currentTime = newTime;
+            if (isVid && typeof (element as any).fastSeek === "function") {
+                try {
+                    (element as any).fastSeek(newTime);
+                } catch {
+                    element.currentTime = newTime;
+                }
+            } else {
+                element.currentTime = newTime;
+            }
             setCurrentTime(newTime);
         }
     };
@@ -852,7 +865,8 @@ export function MultimediaTab({
                             {activeItemIsVideo ? (
                                 <video
                                     ref={videoRef}
-                                    preload="metadata"
+                                    preload="auto"
+                                    crossOrigin="anonymous"
                                     playsInline
                                     poster={getItemThumbnail(activePlayingItem, "hqdefault") || undefined}
                                     onPlay={() => setIsPlaying(true)}

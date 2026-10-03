@@ -195,15 +195,24 @@ export const HistoryItem = React.memo(function HistoryItem({
                                     <span className="text-caption text-tertiary text-[10px] font-mono">
                                         {formatDisplayBadge(record.format)}
                                     </span>
-                                    {record.file_size && record.file_size > 0 && (
+                                    {record.file_size && record.file_size > 0 && record.status === "completed" && (
                                         <span className="text-caption text-tertiary font-mono text-[10px]">
                                             {formatFileSize(record.file_size)}
                                         </span>
                                     )}
-                                    {isOnline && record.speed && (record.status === "downloading" || record.status === "muxing") && (
-                                        <span className="text-caption text-accent font-mono text-[10px]">
-                                            {record.speed}
-                                        </span>
+                                    {isOnline && (record.status === "downloading" || record.status === "muxing") && (
+                                        <>
+                                            {(record.downloaded_bytes || record.total_bytes) && (
+                                                <span className="text-caption text-primary font-mono text-[10px] font-semibold">
+                                                    {record.downloaded_bytes || "0 B"} / {record.total_bytes || "--"}
+                                                </span>
+                                            )}
+                                            {record.speed && (
+                                                <span className="text-caption text-accent font-mono text-[10px]">
+                                                    {record.speed}
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                     {isOnline && record.eta && record.eta !== "--" && record.eta !== "NA" && record.eta.toLowerCase() !== "none" && record.eta.trim() !== "" && record.status === "downloading" && (
                                         <span className="text-caption text-tertiary font-mono text-[10px]">
