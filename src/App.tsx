@@ -1250,20 +1250,17 @@ export default function App() {
         const prevPercent = newHistory[idx].percent || 0;
         const incoming = p.percent || 0;
 
-        // ─── F-XX: Monotonic progress clamp for multi-stream downloads ───
-        // HD downloads use DASH (separate video + audio streams). Each
-        // stream emits 0% → 100% individually, so the raw stream percent
-        // resets between streams. We clamp the displayed percent to never
-        // regress while downloading, capped at 99% so the bar only hits
-        // 100% when the file is truly finalized.
+        // ─── Stream-Aware Progress Rendering ───
+        // Backend scales streams smoothly (video: 0..88%, audio: 88..99%, muxing: 99.5%).
+        // We display the true incoming progress capped at 99% until completed (100%).
         let displayedPercent: number;
         if (p.status === "completed") {
           displayedPercent = 100;
         } else if (p.status === "downloading") {
-          displayedPercent = Math.min(99, Math.max(prevPercent, incoming));
+          displayedPercent = Math.min(99, Math.max(0, incoming));
         } else if (p.status === "muxing" || p.status === "verifying") {
-          // Hold the bar at the last high value during finalize/verify
-          displayedPercent = Math.min(99.5, Math.max(prevPercent, incoming));
+          // Hold the bar at 99.5% during final mux/verification
+          displayedPercent = Math.min(99.5, Math.max(prevPercent, 99.0));
         } else {
           // error / cancelled / interrupted — hold at last value
           displayedPercent = prevPercent;

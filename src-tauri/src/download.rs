@@ -537,7 +537,7 @@ pub async fn start_download(
         let _permit = _permit;
         let download_start_time = std::time::Instant::now();
         let mut cmd = Command::new(&yt_dlp_path);
-        let progress_template = "DEVIZEE_PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._downloaded_bytes_str)s|%(progress._total_bytes_str)s|%(progress._total_bytes_estimate_str)s";
+        let progress_template = "DEVIZEE_PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._downloaded_bytes_str)s|%(progress._total_bytes_str)s|%(progress._total_bytes_estimate_str)s|vcodec:%(info.vcodec)s|acodec:%(info.acodec)s|format:%(info.format_id)s|ext:%(info.ext)s";
 
         cmd.env("PYTHONIOENCODING", "utf-8");
         cmd.args([
@@ -1104,7 +1104,10 @@ pub async fn start_download(
                 }
 
                 if line.contains("format(s)") && line.contains("Downloading") {
-                    if let Some(pos) = line.find(" format(s)") {
+                    if line.contains('+') {
+                        let plus_count = line.matches('+').count();
+                        detected_stream_count = Some(plus_count + 1);
+                    } else if let Some(pos) = line.find(" format(s)") {
                         if let Some(space_pos) = line[..pos].rfind(' ') {
                             if let Ok(count) = line[space_pos + 1..pos].parse::<usize>() {
                                 detected_stream_count = Some(count);
@@ -1114,8 +1117,13 @@ pub async fn start_download(
                 }
 
                 if line.contains("Destination:") {
-                    let is_sub = line.ends_with(".vtt") || line.ends_with(".srt") || line.ends_with(".lrc");
-                    if !is_sub {
+                    let is_aux_file = line.ends_with(".vtt")
+                        || line.ends_with(".srt")
+                        || line.ends_with(".lrc")
+                        || line.ends_with(".jpg")
+                        || line.ends_with(".webp")
+                        || line.ends_with(".png");
+                    if !is_aux_file {
                         destination_count += 1;
                     }
                     if let Some(idx) = line.find("Destination:") {
@@ -1123,7 +1131,7 @@ pub async fn start_download(
                             .trim()
                             .trim_matches('"')
                             .to_string();
-                        if !fp.is_empty() && !is_sub {
+                        if !fp.is_empty() && !is_aux_file {
                             final_file_path = Some(fp);
                         }
                     }
@@ -1165,17 +1173,42 @@ pub async fn start_download(
                             None
                         };
 
+                        let vcodec = parts.iter().find(|p| p.starts_with("vcodec:")).map(|p| &p[7..]).unwrap_or("");
+                        let acodec = parts.iter().find(|p| p.starts_with("acodec:")).map(|p| &p[7..]).unwrap_or("");
+                        let format_info = parts.iter().find(|p| p.starts_with("format:")).map(|p| &p[7..]).unwrap_or("");
+                        let ext_info = parts.iter().find(|p| p.starts_with("ext:")).map(|p| &p[4..]).unwrap_or("");
+
+                        // Filter out auxiliary downloads (subtitles, thumbnails) so their 100% completion does not jump the progress bar
+                        let is_auxiliary = format_info == "NA"
+                            || ext_info == "vtt"
+                            || ext_info == "srt"
+                            || ext_info == "lrc"
+                            || ext_info == "ttml"
+                            || ext_info == "jpg"
+                            || ext_info == "webp"
+                            || ext_info == "png";
+
+                        if is_auxiliary {
+                            continue;
+                        }
+
+                        // Stream type detection:
+                        let is_video_stream = vcodec != "none" && vcodec != "NA" && !vcodec.is_empty();
+                        let is_audio_stream = (vcodec == "none" || vcodec.is_empty()) && acodec != "none" && acodec != "NA" && !acodec.is_empty();
+
                         // Multi-stream DASH smooth scaling:
-                        // Accurately tracks actual stream count (e.g. YouTube DASH video+audio = 2, TikTok single = 1)
-                        // Stream 1 (video) is ~85% of total download.
-                        // Stream 2 (audio) is the remaining ~15%.
-                        // This prevents progress locking at 85% on single streams or 99% during multi-stream.
-                        let is_multi = detected_stream_count.map(|c| c > 1).unwrap_or(is_multi_stream);
+                        // Tracks multi-stream downloads (e.g. YouTube DASH video+audio = 2, TikTok single = 1).
+                        // Video stream is scaled to 0..88%, audio stream to 88..99%, avoiding premature 99% jumps.
+                        let is_multi = is_multi_stream || detected_stream_count.map(|c| c > 1).unwrap_or(false);
                         let percent: f32 = if is_multi {
-                            if destination_count <= 1 {
-                                (raw_percent * 0.85).min(85.0)
+                            if is_video_stream {
+                                (raw_percent * 0.88).min(88.0)
+                            } else if is_audio_stream {
+                                (88.0 + (raw_percent * 0.11)).min(99.0)
+                            } else if destination_count <= 1 {
+                                (raw_percent * 0.88).min(88.0)
                             } else {
-                                (85.0 + (raw_percent * 0.14)).min(99.0)
+                                (88.0 + (raw_percent * 0.11)).min(99.0)
                             }
                         } else {
                             raw_percent.min(99.0)
