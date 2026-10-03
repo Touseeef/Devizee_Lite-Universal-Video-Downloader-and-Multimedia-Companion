@@ -1,7 +1,7 @@
 // src/components/common/EqualizerDropdown.tsx
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Sliders } from "lucide-react";
-import { EQ_PRESETS } from "../../lib/audioContext";
+import { getAllEqPresets } from "../../lib/audioContext";
 
 export function EqualizerDropdown({
     selectedPreset,
@@ -16,6 +16,7 @@ export function EqualizerDropdown({
 }) {
     const [open, setOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const allPresets = getAllEqPresets();
 
     useEffect(() => {
         const handleOutsideClick = (e: MouseEvent) => {
@@ -29,7 +30,7 @@ export function EqualizerDropdown({
 
     const activePresetObj = selectedPreset === "custom"
         ? { id: "custom", name: "Custom", gains: [] }
-        : (EQ_PRESETS.find((p) => p.id === selectedPreset) || EQ_PRESETS[0]);
+        : (allPresets.find((p) => p.id === selectedPreset) || allPresets[0]);
     const activeLabel = activePresetObj.name;
 
     const panelPosition =
@@ -81,7 +82,7 @@ export function EqualizerDropdown({
                         </div>
                     )}
 
-                    {EQ_PRESETS.map((preset) => {
+                    {allPresets.map((preset) => {
                         const isSelected = preset.id === selectedPreset;
                         return (
                             <button

@@ -186,10 +186,11 @@ export function MultimediaTab({
     // We stash the intent here and flush it in a useEffect after re-render.
     const pendingVideoPlayRef = useRef<string | null>(null);
 
-    // Attach the 8-band Web Audio equalizer to the audio element.
+    // Attach the 8-band Web Audio equalizer to both audio and video elements on mount.
     // Runs once after mount — attach is idempotent, so repeated calls are safe.
     useEffect(() => {
         if (audioRef.current) attachEqualizerToMedia(audioRef.current);
+        if (videoRef.current) attachEqualizerToMedia(videoRef.current);
     }, []);
 
     type LocalMediaFile = {
@@ -657,6 +658,12 @@ export function MultimediaTab({
         // Guard the src-change race on the deferred path too
         suppressEndedRef.current = true;
 
+        const ctx = ensureAudioContext();
+        if (ctx && ctx.state === "suspended") {
+            ctx.resume().catch(() => { });
+        }
+        attachEqualizerToMedia(el);
+
         el.pause();
         el.src = src;
         el.volume = isMuted ? 0 : volume;
@@ -862,62 +869,63 @@ export function MultimediaTab({
                                     : "lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
                             }
                         >
-                            {activeItemIsVideo ? (
-                                <video
-                                    ref={videoRef}
-                                    preload="auto"
-                                    crossOrigin="anonymous"
-                                    playsInline
-                                    poster={getItemThumbnail(activePlayingItem, "hqdefault") || undefined}
-                                    onPlay={() => setIsPlaying(true)}
-                                    onPause={() => setIsPlaying(false)}
-                                    onLoadedData={() => {
-                                        // Re-sync volume only. Do NOT call play() here —
-                                        // src changes are driven by playMediaItem, which
-                                        // already calls play() explicitly. Auto-playing
-                                        // on loadeddata causes hover/refocus surprises.
-                                        if (videoRef.current) {
-                                            videoRef.current.volume = isMuted ? 0 : volume;
-                                        }
-                                    }}
-                                    onError={() => {
+                            <video
+                                ref={videoRef}
+                                preload="auto"
+                                crossOrigin="anonymous"
+                                playsInline
+                                poster={getItemThumbnail(activePlayingItem, "hqdefault") || undefined}
+                                onPlay={() => setIsPlaying(true)}
+                                onPause={() => setIsPlaying(false)}
+                                onLoadedData={() => {
+                                    if (videoRef.current) {
+                                        videoRef.current.volume = isMuted ? 0 : volume;
+                                        attachEqualizerToMedia(videoRef.current);
+                                    }
+                                }}
+                                onError={() => {
+                                    if (activeItemIsVideo) {
                                         setVideoError("Playback failed or codec is not supported in built-in player.");
-                                    }}
-                                    onTimeUpdate={() => {
-                                        if (videoRef.current && !isScrubbing) {
-                                            setCurrentTime(videoRef.current.currentTime);
-                                            setDuration(videoRef.current.duration || 0);
-                                        }
-                                    }}
-                                    onEnded={handleMediaEnded}
-                                    className={`w-full h-full cursor-pointer transition-all duration-200 ${
-                                        videoFitMode === "cover" ? "object-cover" : "object-contain"
-                                    }`}
-                                    onClick={togglePlayPause}
-                                >
-                                    {customSubtitleUrl && (
-                                        <track
-                                            key={customSubtitleUrl}
-                                            src={customSubtitleUrl}
-                                            kind="subtitles"
-                                            label={customSubtitleName || "Subtitles"}
-                                            default
-                                        />
-                                    )}
-                                </video>
-                            ) : getItemThumbnail(activePlayingItem, "hqdefault") ? (
-                                <img
-                                    src={getItemThumbnail(activePlayingItem, "hqdefault")!}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center bg-surface-2 text-accent">
-                                    <Music size={28} />
-                                    <span className="text-[10px] font-mono text-tertiary mt-1">
-                                        {formatDisplayBadge(activePlayingItem.format)}
-                                    </span>
-                                </div>
+                                    }
+                                }}
+                                onTimeUpdate={() => {
+                                    if (videoRef.current && !isScrubbing && activeItemIsVideo) {
+                                        setCurrentTime(videoRef.current.currentTime);
+                                        setDuration(videoRef.current.duration || 0);
+                                    }
+                                }}
+                                onEnded={handleMediaEnded}
+                                className={`w-full h-full cursor-pointer transition-all duration-200 ${
+                                    !activeItemIsVideo ? "hidden" : videoFitMode === "cover" ? "object-cover" : "object-contain"
+                                }`}
+                                onClick={togglePlayPause}
+                            >
+                                {customSubtitleUrl && (
+                                    <track
+                                        key={customSubtitleUrl}
+                                        src={customSubtitleUrl}
+                                        kind="subtitles"
+                                        label={customSubtitleName || "Subtitles"}
+                                        default
+                                    />
+                                )}
+                            </video>
+
+                            {!activeItemIsVideo && (
+                                getItemThumbnail(activePlayingItem, "hqdefault") ? (
+                                    <img
+                                        src={getItemThumbnail(activePlayingItem, "hqdefault")!}
+                                        alt=""
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-surface-2 text-accent">
+                                        <Music size={28} />
+                                        <span className="text-[10px] font-mono text-tertiary mt-1">
+                                            {formatDisplayBadge(activePlayingItem.format)}
+                                        </span>
+                                    </div>
+                                )
                             )}
 
                             {/* Video Playback Error Fallback Overlay */}

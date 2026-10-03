@@ -16,6 +16,7 @@ import {
     Volume1,
     Volume2,
     VolumeX,
+    X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
@@ -26,7 +27,7 @@ import { ThemeDropdown } from "../common/ThemeDropdown";
 import type { TranslationKey } from "../../lib/i18n";
 import { VerticalEqSlider } from "../common/VerticalEqSlider";
 
-import { currentEqGains, setGlobalEqualizerGains, EQ_PRESETS } from "../../lib/audioContext";
+import { currentEqGains, setGlobalEqualizerGains, EQ_PRESETS, getCustomEqPresets, saveCustomEqPreset, deleteCustomEqPreset, type EqPreset } from "../../lib/audioContext";
 
 type SettingsTabId =
     | "general"
@@ -37,6 +38,57 @@ type SettingsTabId =
     | "about";
 
 const EQ_FREQUENCIES = ["60Hz", "150Hz", "400Hz", "1kHz", "2.4kHz", "6kHz", "12kHz", "16kHz"];
+
+const EQ_BAND_INFO = [
+    {
+        name: "Sub-Bass",
+        freq: "60Hz",
+        high: "Deep sub rumble, heavy punch, kick drums, synthetic 808s",
+        low: "Cuts muddy low rumble, boominess, and microphone handling noise"
+    },
+    {
+        name: "Bass",
+        freq: "150Hz",
+        high: "Warm bass body, bass guitar fullness, punch in rhythm tracks",
+        low: "Removes boomy or hollow bass resonance, cleans muddy low-end"
+    },
+    {
+        name: "Low-Mids",
+        freq: "400Hz",
+        high: "Warmth and weight in vocals, acoustic guitars, and brass instruments",
+        low: "Clears boxy, 'cardboard' sound and indoor room reverberation"
+    },
+    {
+        name: "Midrange",
+        freq: "1kHz",
+        high: "Vocal presence, speech clarity, dialogue projection in videos",
+        low: "Reduces harsh, nasal, telephone-like vocal sharpness"
+    },
+    {
+        name: "High-Mids",
+        freq: "2.4kHz",
+        high: "Crunch in guitars, vocal bite, snare snap, speech intelligibility",
+        low: "Softens aggressive ear fatigue and shrill, piercing tones"
+    },
+    {
+        name: "Presence",
+        freq: "6kHz",
+        high: "Vocal breath, definition, acoustic sparkle, snare drum crack",
+        low: "Tames harsh sibilance ('s', 'sh', 'ch' sounds) and mouth clicks"
+    },
+    {
+        name: "Brilliance",
+        freq: "12kHz",
+        high: "Crisp cymbals, open high-end sheen, detailed recording texture",
+        low: "Reduces background tape/microphone hiss and harsh bright treble"
+    },
+    {
+        name: "Air",
+        freq: "16kHz",
+        high: "Ultra-high air, acoustic atmosphere, delicate ambient space",
+        low: "Eliminates high-frequency noise, electronic whine, and hiss"
+    },
+];
 
 export function SettingsTab({
     t,
@@ -229,12 +281,47 @@ export function SettingsTab({
         { id: "about", label: "About & Roadmap", icon: Shield },
     ];
 
+    const [customPresets, setCustomPresets] = useState<EqPreset[]>(() => getCustomEqPresets());
+    const [customPresetName, setCustomPresetName] = useState("");
+    const [isSavingPreset, setIsSavingPreset] = useState(false);
+
+    useEffect(() => {
+        const handleNav = (e: any) => {
+            const sec = e.detail?.section;
+            if (sec === "equalizer" || sec === "audio") setActiveSection("equalizer");
+            else if (sec) setActiveSection(sec);
+        };
+        window.addEventListener("devizee-navigate-settings", handleNav);
+        return () => window.removeEventListener("devizee-navigate-settings", handleNav);
+    }, []);
+
+    const allPresets = [...EQ_PRESETS, ...customPresets];
+
     const applyEqPreset = (presetId: string) => {
-        const p = EQ_PRESETS.find((x) => x.id === presetId);
+        const p = allPresets.find((x) => x.id === presetId);
         if (p) {
             setEqBands([...p.gains]);
             setGlobalEqualizerGains(p.gains);
             onSelectEqPreset?.(presetId);
+        }
+    };
+
+    const handleSaveCustomPreset = () => {
+        if (!customPresetName.trim()) return;
+        const newPreset = saveCustomEqPreset(customPresetName.trim(), eqBands);
+        setCustomPresets(getCustomEqPresets());
+        setCustomPresetName("");
+        setIsSavingPreset(false);
+        onSelectEqPreset?.(newPreset.id);
+    };
+
+    const handleDeleteCustomPreset = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        deleteCustomEqPreset(id);
+        const updated = getCustomEqPresets();
+        setCustomPresets(updated);
+        if (selectedEqPreset === id) {
+            applyEqPreset("flat");
         }
     };
 
@@ -799,59 +886,130 @@ export function SettingsTab({
                         </div>
 
                         {/* Presets Bar */}
-                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                        <div className="flex flex-wrap items-center gap-2 pb-1">
                             <span className="text-[11px] font-bold text-tertiary uppercase tracking-wider mr-1 shrink-0">Presets:</span>
-                            {EQ_PRESETS.map((p) => {
+                            {allPresets.map((p) => {
                                 const isSelected = selectedEqPreset === p.id;
+                                const isCustom = p.id.startsWith("custom_");
                                 return (
-                                    <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={() => applyEqPreset(p.id)}
-                                        className={`px-3 py-1 rounded-lg text-caption font-semibold transition-all shrink-0 cursor-pointer ${isSelected
-                                            ? "bg-accent text-white shadow-2xs font-bold"
-                                            : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border border-border-subtle/50"
+                                    <div key={p.id} className="inline-flex items-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => applyEqPreset(p.id)}
+                                            className={`px-3 py-1 text-caption font-semibold transition-all shrink-0 cursor-pointer ${
+                                                isCustom ? "rounded-l-lg" : "rounded-lg"
+                                            } ${isSelected
+                                                ? "bg-accent text-white shadow-2xs font-bold"
+                                                : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border border-border-subtle/50"
                                             }`}
-                                    >
-                                        {p.name.replace(/ \(Default\)/, "")}
-                                    </button>
+                                        >
+                                            {p.name.replace(/ \(Default\)/, "")}
+                                        </button>
+                                        {isCustom && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleDeleteCustomPreset(p.id, e)}
+                                                className={`px-1.5 py-1 text-caption rounded-r-lg border-l-0 transition-colors cursor-pointer ${
+                                                    isSelected
+                                                        ? "bg-accent/80 text-white hover:bg-status-danger"
+                                                        : "bg-surface-2 text-tertiary hover:text-status-danger hover:bg-surface-3 border border-border-subtle/50"
+                                                }`}
+                                                title={`Delete ${p.name}`}
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        )}
+                                    </div>
                                 );
                             })}
                             {selectedEqPreset === "custom" && (
                                 <span className="px-3 py-1 rounded-lg text-caption font-bold bg-accent/20 text-accent border border-accent/40 shrink-0">
-                                    Custom (Manual)
+                                    Custom (Unsaved)
                                 </span>
+                            )}
+
+                            {/* Save Custom Preset Button / Inline Form */}
+                            {!isSavingPreset ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSavingPreset(true)}
+                                    className="px-2.5 py-1 rounded-lg text-caption font-semibold text-accent hover:bg-accent/15 border border-accent/30 transition-colors cursor-pointer shrink-0 ml-auto"
+                                    title="Save current slider gains as a custom named preset"
+                                >
+                                    + Save as Custom Preset
+                                </button>
+                            ) : (
+                                <div className="flex items-center gap-1.5 shrink-0 ml-auto animate-in fade-in duration-fast">
+                                    <input
+                                        type="text"
+                                        placeholder="Preset Name (e.g. My Bass)"
+                                        value={customPresetName}
+                                        onChange={(e) => setCustomPresetName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleSaveCustomPreset();
+                                            else if (e.key === "Escape") setIsSavingPreset(false);
+                                        }}
+                                        autoFocus
+                                        className="h-7 px-2.5 text-caption font-semibold rounded-lg bg-surface-2 border border-accent text-primary outline-none focus:ring-1 focus:ring-accent w-44"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveCustomPreset}
+                                        disabled={!customPresetName.trim()}
+                                        className="h-7 px-2.5 rounded-lg bg-accent text-white text-caption font-bold hover:bg-accent-hover transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        Save
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsSavingPreset(false)}
+                                        className="h-7 px-2 rounded-lg text-caption text-secondary hover:text-primary transition-colors cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
                             )}
                         </div>
 
-                        {/* Sliders Grid — Custom Pointer-Based Sliders */}
+                        {/* Sliders Grid — Custom Pointer-Based Sliders with Informative Tooltips */}
                         <div className="p-5 bg-surface-2/60 rounded-xl border border-border-subtle/70">
-                            <div className="grid grid-cols-8 gap-3 sm:gap-5 justify-items-center">
-                                {eqBands.map((gain, i) => (
-                                    <div key={EQ_FREQUENCIES[i]} className="flex flex-col items-center">
-                                        <span
-                                            className={`text-[11px] font-mono font-bold mb-2 w-10 text-center ${gain > 0
-                                                ? "text-accent"
-                                                : gain < 0
-                                                    ? "text-status-warning"
-                                                    : "text-tertiary"
-                                                }`}
+                            <div className="grid grid-cols-8 gap-2 sm:gap-4 justify-items-center">
+                                {eqBands.map((gain, i) => {
+                                    const band = EQ_BAND_INFO[i] || { name: `Band ${i + 1}`, freq: EQ_FREQUENCIES[i], high: "Boost", low: "Cut" };
+                                    return (
+                                        <div
+                                            key={band.freq}
+                                            className="flex flex-col items-center group cursor-help relative"
+                                            title={`${band.name} (${band.freq})\n▲ High (+): ${band.high}\n▼ Low (-): ${band.low}`}
                                         >
-                                            {gain > 0 ? `+${gain}` : gain}
-                                        </span>
+                                            <span className="text-[10px] font-bold text-tertiary group-hover:text-accent mb-1 truncate max-w-full text-center transition-colors">
+                                                {band.name}
+                                            </span>
 
-                                        <VerticalEqSlider
-                                            value={gain}
-                                            min={-12}
-                                            max={12}
-                                            onChange={(v) => handleBandChange(i, v)}
-                                        />
+                                            <span
+                                                className={`text-[11px] font-mono font-bold mb-2 w-10 text-center ${gain > 0
+                                                    ? "text-accent"
+                                                    : gain < 0
+                                                        ? "text-status-warning"
+                                                        : "text-tertiary"
+                                                    }`}
+                                            >
+                                                {gain > 0 ? `+${gain}` : gain}
+                                            </span>
 
-                                        <span className="text-[11px] font-bold text-secondary text-center mt-2">
-                                            {EQ_FREQUENCIES[i]}
-                                        </span>
-                                    </div>
-                                ))}
+                                            <VerticalEqSlider
+                                                value={gain}
+                                                min={-12}
+                                                max={12}
+                                                onChange={(v) => handleBandChange(i, v)}
+                                            />
+
+                                            <span className="text-[11px] font-bold text-secondary text-center mt-2 group-hover:text-primary transition-colors">
+                                                {band.freq}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>

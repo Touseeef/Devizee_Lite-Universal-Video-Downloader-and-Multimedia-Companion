@@ -8,6 +8,7 @@ export type EqPreset = { id: string; name: string; gains: number[] };
 
 export const EQ_PRESETS: EqPreset[] = [
     { id: "flat", name: "Flat (Default)", gains: [0, 0, 0, 0, 0, 0, 0, 0] },
+    { id: "volume_boost", name: "Volume Booster (+4dB)", gains: [4, 4, 3.5, 3.5, 3.5, 4, 4, 3.5] },
     { id: "bass_boost", name: "Bass Boost", gains: [6, 4.5, 2, 0, 0, 0, 0, 0] },
     { id: "vocal", name: "Vocal Booster", gains: [-2, -1, 1, 3.5, 4, 2, 1, 0] },
     { id: "electronic", name: "Electronic / Dance", gains: [5, 4, 1, 0, 1.5, 3, 4, 4.5] },
@@ -159,8 +160,42 @@ export function setGlobalEqualizerGains(gains: number[]) {
     }
 }
 
+export function getCustomEqPresets(): EqPreset[] {
+    try {
+        const saved = localStorage.getItem("devizee_custom_eq_presets");
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch { }
+    return [];
+}
+
+export function saveCustomEqPreset(name: string, gains: number[]): EqPreset {
+    const id = `custom_${Date.now()}`;
+    const newPreset: EqPreset = { id, name: name.trim() || "My Preset", gains: [...gains] };
+    const customs = getCustomEqPresets().filter((p) => p.name.toLowerCase() !== newPreset.name.toLowerCase());
+    customs.push(newPreset);
+    try {
+        localStorage.setItem("devizee_custom_eq_presets", JSON.stringify(customs));
+    } catch { }
+    return newPreset;
+}
+
+export function deleteCustomEqPreset(id: string) {
+    const customs = getCustomEqPresets().filter((p) => p.id !== id);
+    try {
+        localStorage.setItem("devizee_custom_eq_presets", JSON.stringify(customs));
+    } catch { }
+}
+
+export function getAllEqPresets(): EqPreset[] {
+    return [...EQ_PRESETS, ...getCustomEqPresets()];
+}
+
 export function applyEqualizerPreset(presetId: string): EqPreset {
-    const preset = EQ_PRESETS.find((p) => p.id === presetId) || EQ_PRESETS[0];
+    const all = getAllEqPresets();
+    const preset = all.find((p) => p.id === presetId) || EQ_PRESETS[0];
     setGlobalEqualizerGains(preset.gains);
     try { localStorage.setItem("devizee_eq_preset", preset.id); } catch { }
     return preset;

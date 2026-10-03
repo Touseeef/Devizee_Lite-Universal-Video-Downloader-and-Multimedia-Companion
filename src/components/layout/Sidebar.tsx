@@ -9,6 +9,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Settings as SettingsIcon,
+    Sliders,
     Volume2,
 } from "lucide-react";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -90,16 +91,21 @@ export function Sidebar({
                 className={`border-b border-border-subtle flex items-center ${collapsed ? "justify-center py-3 flex-col gap-2" : "px-4 py-4 gap-2"
                     }`}
             >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <button
+                    type="button"
+                    onClick={() => handleTabClick("dashboard")}
+                    className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer group hover:opacity-85 transition-opacity"
+                    title="Go to Dashboard"
+                >
                     <img
                         src={logo}
                         alt="Devizee"
-                        className="w-8 h-8 shrink-0 pointer-events-none"
+                        className="w-8 h-8 shrink-0 pointer-events-none group-hover:scale-105 transition-transform"
                         draggable={false}
                     />
                     {!collapsed && (
                         <div className="min-w-0 flex-1">
-                            <div className="font-bold text-body-sm tracking-tight text-primary leading-tight">
+                            <div className="font-bold text-body-sm tracking-tight text-primary leading-tight group-hover:text-accent transition-colors">
                                 Devizee Lite
                             </div>
                             <div className="text-[10px] text-tertiary leading-tight truncate" title="Universal Video Downloader & Multimedia Companion">
@@ -107,7 +113,7 @@ export function Sidebar({
                             </div>
                         </div>
                     )}
-                </div>
+                </button>
 
                 <div className="flex items-center gap-1 shrink-0">
                     {onOpenWelcome && (
@@ -280,16 +286,32 @@ export function Sidebar({
 
                 <div>
                     {!collapsed && (
-                        <div className="text-[10px] uppercase text-tertiary font-semibold tracking-wider px-1 mb-1.5">
-                            Equalizer
+                        <div className="text-[10px] uppercase text-tertiary font-semibold tracking-wider px-1 mb-1.5 flex items-center justify-between">
+                            <span>Equalizer</span>
                         </div>
                     )}
-                    <EqualizerDropdown
-                        selectedPreset={selectedEqPreset}
-                        onSelectPreset={onSelectEqPreset || (() => { })}
-                        placement={collapsed ? "right" : "up"}
-                        compact={collapsed}
-                    />
+                    <div className="flex items-center gap-1.5">
+                        <div className="flex-1 min-w-0">
+                            <EqualizerDropdown
+                                selectedPreset={selectedEqPreset}
+                                onSelectPreset={onSelectEqPreset || (() => { })}
+                                placement={collapsed ? "right" : "up"}
+                                compact={collapsed}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setActiveTab("settings");
+                                try { localStorage.setItem("devizee_settings_section", "audio"); } catch { }
+                                window.dispatchEvent(new CustomEvent("devizee-navigate-settings", { detail: { section: "audio" } }));
+                            }}
+                            className="p-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-secondary hover:text-accent flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                            title="Open Equalizer Tuning in Settings"
+                        >
+                            <Sliders size={13} />
+                        </button>
+                    </div>
                 </div>
             </div>
 

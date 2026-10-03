@@ -2,7 +2,9 @@
 import React, { useState, useEffect } from "react";
 import {
     AlertCircle,
+    ArrowDown,
     Check,
+    Clock,
     Copy,
     Folder,
     Link as LinkIcon,
@@ -201,23 +203,29 @@ export const HistoryItem = React.memo(function HistoryItem({
                                         </span>
                                     )}
                                     {isOnline && (record.status === "downloading" || record.status === "muxing") && (
-                                        <>
-                                            {(record.downloaded_bytes || record.total_bytes) && (
-                                                <span className="text-caption text-primary font-mono text-[10px] font-semibold">
-                                                    {record.downloaded_bytes || "0 B"} / {record.total_bytes || "--"}
+                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                            {record.downloaded_bytes && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-mono text-[10px] font-semibold">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                                                    <span>{record.downloaded_bytes}</span>
+                                                    {record.total_bytes && record.total_bytes !== "N/A" && record.total_bytes !== "NA" && (
+                                                        <span className="text-secondary/70 font-normal">/ {record.total_bytes}</span>
+                                                    )}
                                                 </span>
                                             )}
                                             {record.speed && (
-                                                <span className="text-caption text-accent font-mono text-[10px]">
-                                                    {record.speed}
+                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-accent/10 border border-accent/25 text-accent font-mono text-[10px] font-semibold">
+                                                    <ArrowDown size={10} className="shrink-0" />
+                                                    <span>{record.speed}</span>
                                                 </span>
                                             )}
-                                        </>
-                                    )}
-                                    {isOnline && record.eta && record.eta !== "--" && record.eta !== "NA" && record.eta.toLowerCase() !== "none" && record.eta.trim() !== "" && record.status === "downloading" && (
-                                        <span className="text-caption text-tertiary font-mono text-[10px]">
-                                            ETA {record.eta}
-                                        </span>
+                                            {record.eta && record.eta !== "--" && record.eta !== "NA" && record.eta !== "N/A" && record.eta.toLowerCase() !== "none" && record.eta.trim() !== "" && (
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-2 border border-border-subtle text-secondary font-mono text-[10px]">
+                                                    <Clock size={10} className="shrink-0 text-tertiary" />
+                                                    <span>ETA {record.eta}</span>
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
                                     {!isOnline && (record.status === "downloading" || record.status === "muxing") && (
                                         <span className="text-caption text-status-warning font-mono text-[10px]">

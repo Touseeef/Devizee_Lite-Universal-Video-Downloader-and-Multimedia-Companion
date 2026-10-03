@@ -173,14 +173,19 @@ export function VideoCard({
     const isAudioSelected = !!selectedFormat?.is_audio_only;
     const isAudioPreviewing = previewingId === videoInfo.id && isAudioElementPlaying;
 
+    const formatLocalDateTime = (date: Date) => {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+
     // Schedule Download State
     const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+    const [selectedSchedulePreset, setSelectedSchedulePreset] = useState<string | null>(null);
     const [scheduleDateTime, setScheduleDateTime] = useState(() => {
         const d = new Date();
         d.setHours(d.getHours() + 1);
         d.setMinutes(0);
-        const tzOffset = d.getTimezoneOffset() * 60000;
-        return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+        return formatLocalDateTime(d);
     });
     const [activeScheduleTime, setActiveScheduleTime] = useState<string | null>(null);
     const scheduleTimerRef = useRef<any>(null);
@@ -214,7 +219,7 @@ export function VideoCard({
         setActiveScheduleTime(null);
     };
 
-    const setSchedulePreset = (offsetHours: number, fixedHour?: number) => {
+    const setSchedulePreset = (presetKey: string, offsetHours: number, fixedHour?: number) => {
         const d = new Date();
         if (fixedHour !== undefined) {
             if (d.getHours() >= fixedHour) {
@@ -224,8 +229,8 @@ export function VideoCard({
         } else {
             d.setHours(d.getHours() + offsetHours);
         }
-        const tzOffset = d.getTimezoneOffset() * 60000;
-        setScheduleDateTime(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+        setSelectedSchedulePreset(presetKey);
+        setScheduleDateTime(formatLocalDateTime(d));
     };
 
     const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
@@ -1114,23 +1119,6 @@ export function VideoCard({
                         </div>
                     )}
 
-                    {/* Active Scheduled Download Banner */}
-                    {activeScheduleTime && (
-                        <div className="p-3 bg-accent/10 border border-accent/30 rounded-xl text-caption font-semibold flex items-center justify-between text-accent animate-in fade-in">
-                            <div className="flex items-center gap-2">
-                                <Clock size={15} />
-                                <span>Scheduled to start on {activeScheduleTime}</span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleCancelSchedule}
-                                className="text-[11px] px-2.5 py-1 rounded-md bg-surface-1 text-secondary hover:text-status-danger border border-border-subtle cursor-pointer transition-colors"
-                            >
-                                Cancel Schedule
-                            </button>
-                        </div>
-                    )}
-
                     {/* Primary Download Action Row */}
                     <div className="flex items-center gap-2 pt-1">
                         <button
@@ -1283,7 +1271,10 @@ export function VideoCard({
                             <input
                                 type="datetime-local"
                                 value={scheduleDateTime}
-                                onChange={(e) => setScheduleDateTime(e.target.value)}
+                                onChange={(e) => {
+                                    setScheduleDateTime(e.target.value);
+                                    setSelectedSchedulePreset(null);
+                                }}
                                 className="w-full px-3 py-2.5 rounded-xl bg-surface-2 border border-border-subtle text-body-sm font-semibold text-primary outline-none focus:border-accent"
                             />
 
@@ -1293,22 +1284,34 @@ export function VideoCard({
                                 <div className="grid grid-cols-3 gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => setSchedulePreset(1)}
-                                        className="py-1.5 px-2 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary border border-border-subtle transition-colors cursor-pointer"
+                                        onClick={() => setSchedulePreset("1h", 1)}
+                                        className={`py-1.5 px-2 rounded-lg text-caption font-semibold border transition-all cursor-pointer ${
+                                            selectedSchedulePreset === "1h"
+                                                ? "bg-accent/20 border-accent text-accent font-bold shadow-xs"
+                                                : "bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border-border-subtle"
+                                        }`}
                                     >
                                         In 1 Hour
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setSchedulePreset(0, 2)}
-                                        className="py-1.5 px-2 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary border border-border-subtle transition-colors cursor-pointer"
+                                        onClick={() => setSchedulePreset("tonight", 0, 2)}
+                                        className={`py-1.5 px-2 rounded-lg text-caption font-semibold border transition-all cursor-pointer ${
+                                            selectedSchedulePreset === "tonight"
+                                                ? "bg-accent/20 border-accent text-accent font-bold shadow-xs"
+                                                : "bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border-border-subtle"
+                                        }`}
                                     >
                                         Tonight 2 AM
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setSchedulePreset(0, 8)}
-                                        className="py-1.5 px-2 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold text-secondary hover:text-primary border border-border-subtle transition-colors cursor-pointer"
+                                        onClick={() => setSchedulePreset("tomorrow", 0, 8)}
+                                        className={`py-1.5 px-2 rounded-lg text-caption font-semibold border transition-all cursor-pointer ${
+                                            selectedSchedulePreset === "tomorrow"
+                                                ? "bg-accent/20 border-accent text-accent font-bold shadow-xs"
+                                                : "bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border-border-subtle"
+                                        }`}
                                     >
                                         Tomorrow 8 AM
                                     </button>

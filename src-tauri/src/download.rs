@@ -1146,7 +1146,7 @@ pub async fn start_download(
 
                         let downloaded_bytes = if parts.len() > 3 {
                             let s = parts[3].trim();
-                            if s != "NA" && !s.is_empty() {
+                            if s != "NA" && s != "N/A" && !s.is_empty() {
                                 Some(s.to_string())
                             } else {
                                 None
@@ -1157,11 +1157,11 @@ pub async fn start_download(
 
                         let total_bytes = if parts.len() > 4 {
                             let s = parts[4].trim();
-                            if s != "NA" && !s.is_empty() {
+                            if s != "NA" && s != "N/A" && !s.is_empty() {
                                 Some(s.to_string())
                             } else if parts.len() > 5 {
                                 let est = parts[5].trim();
-                                if est != "NA" && !est.is_empty() {
+                                if est != "NA" && est != "N/A" && !est.is_empty() {
                                     Some(format!("~{}", est))
                                 } else {
                                     None
