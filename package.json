@@ -1,5 +1,6 @@
 {
   "name": "devizee-lite-universal-video-downloader",
+  "description": "Devizee Lite — Universal Video Downloader & Multimedia Companion",
   "private": true,
   "version": "0.7.2",
   "type": "module",

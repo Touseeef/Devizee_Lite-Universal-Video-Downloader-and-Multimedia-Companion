@@ -1,7 +1,7 @@
 [package]
 name = "devizee-all-in-one-download-manager"
 version = "0.7.2"
-description = "A Tauri App"
+description = "Devizee Lite — Universal Video Downloader & Multimedia Companion"
 authors = ["you"]
 edition = "2021"
 default-run = "devizee-all-in-one-download-manager"

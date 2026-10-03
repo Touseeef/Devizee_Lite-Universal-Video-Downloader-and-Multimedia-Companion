@@ -1,6 +1,6 @@
-# Devizee Lite
+# DEVIZEE LITE — UNIVERSAL VIDEO DOWNLOADER & MULTIMEDIA COMPANION
 
-**A fast, privacy-first desktop download manager and media player for Windows.**
+**A fast, privacy-first desktop universal video downloader and multimedia companion for Windows.**
 Built with Tauri v2, Rust, React, and powered by `yt-dlp` + `ffmpeg`.
 
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2.0-24C8D8?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)

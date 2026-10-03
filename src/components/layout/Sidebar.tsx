@@ -102,8 +102,8 @@ export function Sidebar({
                             <div className="font-bold text-body-sm tracking-tight text-primary leading-tight">
                                 Devizee Lite
                             </div>
-                            <div className="text-[10px] text-tertiary leading-tight truncate">
-                                Universal Video Downloader
+                            <div className="text-[10px] text-tertiary leading-tight truncate" title="Universal Video Downloader & Multimedia Companion">
+                                Universal Video Downloader & Multimedia Companion
                             </div>
                         </div>
                     )}

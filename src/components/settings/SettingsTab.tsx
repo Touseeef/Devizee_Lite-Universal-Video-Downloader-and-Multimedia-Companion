@@ -979,7 +979,7 @@ export function SettingsTab({
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
-                                        <h3 className="font-extrabold text-title-sm text-primary tracking-tight">Devizee Lite - Universal Video Downloader</h3>
+                                        <h3 className="font-extrabold text-title-sm text-primary tracking-tight">Devizee Lite — Universal Video Downloader & Multimedia Companion</h3>
                                         <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent text-[11px] font-bold">
                                             v0.7.2
                                         </span>
@@ -1074,7 +1074,7 @@ export function SettingsTab({
                                     const match = navigator.userAgent.match(/Edg\/([\d.]+)/);
                                     const webview = match ? match[1] : "unknown";
                                     const info = [
-                                        "Devizee Lite v0.7.2",
+                                        "Devizee Lite — Universal Video Downloader & Multimedia Companion v0.7.2",
                                         `Platform: ${navigator.platform}`,
                                         `User agent: ${navigator.userAgent}`,
                                         `WebView2: ${webview}`,
@@ -1111,7 +1111,7 @@ export function SettingsTab({
                             </button>
                         </div>
                         <pre className="p-3 rounded-xl bg-surface-2/60 border border-border-subtle text-[11px] font-mono text-secondary leading-relaxed whitespace-pre-wrap overflow-x-auto">
-                            {`Devizee Lite v0.7.2 · Tauri v2 · Rust + React
+                            {`Devizee Lite — Universal Video Downloader & Multimedia Companion v0.7.2 · Tauri v2 · Rust + React
 Repository: github.com/Touseeef/devizee-lite-universal-video-downloader
 Privacy: Zero telemetry. All processing local.`}
                         </pre>

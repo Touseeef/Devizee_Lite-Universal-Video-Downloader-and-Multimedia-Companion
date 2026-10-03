@@ -40,7 +40,7 @@ export function WelcomeModal({
                                     </span>
                                 </div>
                                 <p className="text-caption text-secondary mt-0.5">
-                                    Universal, privacy-first multimedia downloader & engine
+                                    Universal Video Downloader & Multimedia Companion
                                 </p>
                             </div>
                         </div>
