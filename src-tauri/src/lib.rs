@@ -467,6 +467,8 @@ async fn read_local_file(path: String, app: tauri::AppHandle) -> Result<Vec<u8>,
     // F-16: normalize case on Windows for UNC path prefix comparison.
     let canon_str = canonical.to_string_lossy().to_lowercase();
     let allowed_str = allowed_canonical.to_string_lossy().to_lowercase();
+    let stripped_canon = canon_str.strip_prefix(r"\\?\").unwrap_or(&canon_str);
+    let stripped_allowed = allowed_str.strip_prefix(r"\\?\").unwrap_or(&allowed_str);
 
     // Bug 1 fix: allow any file recorded in the DB, even if the user
     // configured a custom download folder (e.g. D:\Media). Without this,
@@ -475,14 +477,23 @@ async fn read_local_file(path: String, app: tauri::AppHandle) -> Result<Vec<u8>,
     if let Some(state) = app.try_state::<AppState>() {
         if let Ok(conn) = state.db_conn.lock() {
             if let Ok(records) = db::get_all_downloads(&conn) {
-                is_known_download = records
-                    .iter()
-                    .any(|r| r.file_path.as_deref() == Some(path.as_str()));
+                let norm_target = path.replace('\\', "/").to_lowercase();
+                is_known_download = records.iter().any(|r| {
+                    if let Some(ref rp) = r.file_path {
+                        if rp.replace('\\', "/").to_lowercase() == norm_target {
+                            return true;
+                        }
+                        if let Ok(canon_r) = std::path::Path::new(rp).canonicalize() {
+                            return canon_r == canonical;
+                        }
+                    }
+                    false
+                });
             }
         }
     }
 
-    if !is_known_download && !canon_str.starts_with(&allowed_str) {
+    if !is_known_download && !stripped_canon.starts_with(stripped_allowed) {
         return Err("Access denied: file is outside the Devizee download directory".to_string());
     }
 
@@ -860,13 +871,30 @@ fn delete_history_file(
         let mut is_known_download = false;
         if let Ok(conn) = state.db_conn.lock() {
             if let Ok(records) = db::get_all_downloads(&conn) {
-                is_known_download = records
-                    .iter()
-                    .any(|r| r.file_path.as_deref() == Some(file_path.as_str()));
+                let norm_target = file_path.replace('\\', "/").to_lowercase();
+                is_known_download = records.iter().any(|r| {
+                    if r.id == id {
+                        return true;
+                    }
+                    if let Some(ref rp) = r.file_path {
+                        if rp.replace('\\', "/").to_lowercase() == norm_target {
+                            return true;
+                        }
+                        if let Ok(canon_r) = std::path::Path::new(rp).canonicalize() {
+                            return canon_r == canonical;
+                        }
+                    }
+                    false
+                });
             }
         }
 
-        if !is_known_download && !canonical.starts_with(&allowed_canonical) {
+        let canon_str = canonical.to_string_lossy().to_lowercase();
+        let allowed_str = allowed_canonical.to_string_lossy().to_lowercase();
+        let stripped_canon = canon_str.strip_prefix(r"\\?\").unwrap_or(&canon_str);
+        let stripped_allowed = allowed_str.strip_prefix(r"\\?\").unwrap_or(&allowed_str);
+
+        if !is_known_download && !stripped_canon.starts_with(stripped_allowed) {
             return Err(
                 "Access denied: file is outside the Devizee download directory".to_string(),
             );

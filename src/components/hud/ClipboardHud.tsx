@@ -65,7 +65,6 @@ export function ClipboardHud({ settings }: { settings: any }) {
                                     customFlags: null,
                                     scanAntivirus: true,
                                     downloadSections: null,
-                                    duplicateAction: null,
                                 });
                                 const win = getCurrentWebviewWindow();
                                 await win.hide();

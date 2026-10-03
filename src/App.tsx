@@ -2094,7 +2094,6 @@ function detectAudioMime(arr: Uint8Array): string {
         customFlags: settings.customFlags ? settings.customFlags : null,
         scanAntivirus: settings.scanAntivirus,
         downloadSections: downloadSectionsArg,
-        duplicateAction: duplicateAction || null,
         estimatedSizeBytes: estimatedSize,
         downloadSubtitles: downloadSubtitlesOverride !== undefined ? downloadSubtitlesOverride : (settings.downloadSubtitles ?? true),
         subtitleLanguages: settings.subtitleLanguages || "all",
@@ -2180,7 +2179,6 @@ function detectAudioMime(arr: Uint8Array): string {
         customFlags: settings.customFlags ? settings.customFlags : null,
         scanAntivirus: settings.scanAntivirus,
         downloadSections: retrySections,
-        duplicateAction: "overwrite",
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
@@ -2293,10 +2291,6 @@ function detectAudioMime(arr: Uint8Array): string {
         customFlags: settings.customFlags ? settings.customFlags : null,
         scanAntivirus: settings.scanAntivirus,
         downloadSections: refreshSections,
-        // "overwrite" here means "keep the .part and continue" — yt-dlp's
-        // --force-overwrites flag combined with the existing .part file
-        // results in a resume, not a restart.
-        duplicateAction: "overwrite",
         estimatedSizeBytes: record.file_size ?? null,
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
