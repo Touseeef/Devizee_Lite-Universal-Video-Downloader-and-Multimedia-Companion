@@ -201,10 +201,29 @@ export function MultimediaTab({
         is_audio: boolean;
         file_size: number;
         modified_time: number;
+        thumbnail?: string | null;
     };
 
     const [scannedLocalItems, setScannedLocalItems] = useState<DownloadRecord[]>([]);
     const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title" | "size_desc">("date_desc");
+    const [localThumbnails, setLocalThumbnails] = useState<Record<string, string>>({});
+    const attemptedThumbPaths = useRef<Set<string>>(new Set());
+
+    const getItemThumbnail = (item?: DownloadRecord | null, quality: "mqdefault" | "hqdefault" = "mqdefault"): string | null => {
+        if (!item) return null;
+        const yId = extractYtId(item.url, item.id);
+        if (yId) return `https://i.ytimg.com/vi/${yId}/${quality}.jpg`;
+        if (item.thumbnail) {
+            if (item.thumbnail.startsWith("http://") || item.thumbnail.startsWith("https://") || item.thumbnail.startsWith("asset://")) {
+                return item.thumbnail;
+            }
+            return safeConvertFileSrc(item.thumbnail);
+        }
+        if (item.file_path && localThumbnails[item.file_path]) {
+            return localThumbnails[item.file_path];
+        }
+        return null;
+    };
 
     const scanFolders = async (foldersToScan: string[]) => {
         if (!foldersToScan || foldersToScan.length === 0) {
@@ -236,6 +255,7 @@ export function MultimediaTab({
                         date_added: f.modified_time,
                         hidden: false,
                         file_size: f.file_size,
+                        thumbnail: f.thumbnail ? safeConvertFileSrc(f.thumbnail) : undefined,
                     });
                 }
             } catch (err) {
@@ -316,6 +336,55 @@ export function MultimediaTab({
     const upcomingQueue = useMemo(() => {
         return currentQueue;
     }, [currentQueue]);
+
+    // Background thumbnail generator for local video files
+    useEffect(() => {
+        const allCandidates = [...displayedItems, ...upcomingQueue];
+        if (activePlayingItem) allCandidates.push(activePlayingItem);
+
+        const itemsToFetch = allCandidates.filter(
+            (item) =>
+                item.file_path &&
+                isVideoFormat(item.format) &&
+                !extractYtId(item.url, item.id) &&
+                !item.thumbnail &&
+                !attemptedThumbPaths.current.has(item.file_path)
+        );
+
+        if (itemsToFetch.length === 0) return;
+
+        // Deduplicate by file_path
+        const uniqueItems = Array.from(new Map(itemsToFetch.map((item) => [item.file_path!, item])).values());
+        for (const item of uniqueItems) {
+            attemptedThumbPaths.current.add(item.file_path!);
+        }
+
+        let isCancelled = false;
+
+        const generateThumbs = async () => {
+            for (const item of uniqueItems) {
+                if (isCancelled) break;
+                try {
+                    const thumbPath = await invoke<string>("get_video_thumbnail", { filePath: item.file_path });
+                    if (thumbPath && !isCancelled) {
+                        const assetUrl = safeConvertFileSrc(thumbPath);
+                        setLocalThumbnails((prev) => ({
+                            ...prev,
+                            [item.file_path!]: assetUrl,
+                        }));
+                    }
+                } catch {
+                    // Silently ignore extraction errors
+                }
+            }
+        };
+
+        generateThumbs();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [displayedItems, upcomingQueue, activePlayingItem, isVideoFormat]);
 
     useEffect(() => {
         const handleFs = async () => {
@@ -734,7 +803,6 @@ export function MultimediaTab({
 
     const activeItemIsVideo = activePlayingItem ? isVideoFormat(activePlayingItem.format) : false;
     const displayScrubTime = isScrubbing ? scrubValue : currentTime;
-    const activeYtId = activePlayingItem ? extractYtId(activePlayingItem.url, activePlayingItem.id) : null;
 
     return (
         <div className="max-w-5xl xl:max-w-6xl mx-auto space-y-6">
@@ -781,6 +849,7 @@ export function MultimediaTab({
                                     preload="auto"
                                     playsInline
                                     crossOrigin="anonymous"
+                                    poster={getItemThumbnail(activePlayingItem, "hqdefault") || undefined}
                                     onPlay={() => setIsPlaying(true)}
                                     onPause={() => setIsPlaying(false)}
                                     onLoadedData={() => {
@@ -817,9 +886,9 @@ export function MultimediaTab({
                                         />
                                     )}
                                 </video>
-                            ) : activeYtId ? (
+                            ) : getItemThumbnail(activePlayingItem, "hqdefault") ? (
                                 <img
-                                    src={`https://i.ytimg.com/vi/${activeYtId}/hqdefault.jpg`}
+                                    src={getItemThumbnail(activePlayingItem, "hqdefault")!}
                                     alt=""
                                     className="w-full h-full object-cover"
                                 />
@@ -928,7 +997,7 @@ export function MultimediaTab({
                                             <div className="py-12 text-center text-white/50 text-caption">No videos in queue</div>
                                         ) : (
                                             upcomingQueue.map((qItem) => {
-                                                const qId = extractYtId(qItem.url, qItem.id);
+                                                const thumb = getItemThumbnail(qItem);
                                                 const isActivelyPlaying = activePlayingItem?.id === qItem.id;
                                                 return (
                                                     <div
@@ -941,10 +1010,12 @@ export function MultimediaTab({
                                                         }`}
                                                     >
                                                         <div className="w-16 aspect-video rounded bg-black/80 overflow-hidden shrink-0 relative flex items-center justify-center">
-                                                            {qId ? (
-                                                                <img src={`https://i.ytimg.com/vi/${qId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" />
-                                                            ) : (
+                                                            {thumb ? (
+                                                                <img src={thumb} alt="" className="w-full h-full object-cover" />
+                                                            ) : isVideoFormat(qItem.format) ? (
                                                                 <Film size={16} className={isActivelyPlaying ? "text-accent" : "text-white/40"} />
+                                                            ) : (
+                                                                <Music size={16} className={isActivelyPlaying ? "text-accent" : "text-white/40"} />
                                                             )}
                                                             {isActivelyPlaying && (
                                                                 <div className="absolute inset-0 bg-accent/20 flex items-center justify-center">
@@ -1359,7 +1430,7 @@ export function MultimediaTab({
                                     </div>
                                 ) : (
                                     upcomingQueue.map((item) => {
-                                        const qYtId = extractYtId(item.url, item.id);
+                                        const thumb = getItemThumbnail(item);
                                         const isVid = isVideoFormat(item.format);
                                         const isCurrentItem = activePlayingItem?.id === item.id;
                                         return (
@@ -1373,9 +1444,9 @@ export function MultimediaTab({
                                             >
                                                 <div className="flex items-center gap-2 min-w-0 flex-1">
                                                     <div className="w-8 h-8 rounded-md bg-surface-1 overflow-hidden shrink-0 flex items-center justify-center border border-border-subtle/40">
-                                                        {qYtId ? (
+                                                        {thumb ? (
                                                             <img
-                                                                src={`https://i.ytimg.com/vi/${qYtId}/mqdefault.jpg`}
+                                                                src={thumb}
                                                                 alt=""
                                                                 className="w-full h-full object-cover"
                                                             />
@@ -1653,7 +1724,7 @@ export function MultimediaTab({
                         const isVid = isVideoFormat(item.format);
                         const isSelected = selectedIds.has(item.id);
                         const isCurrentActive = activePlayingItem?.id === item.id;
-                        const yId = extractYtId(item.url, item.id);
+                        const thumb = getItemThumbnail(item, "hqdefault");
 
                         return (
                             <div
@@ -1670,9 +1741,9 @@ export function MultimediaTab({
                                     onClick={() => playMediaItem(item)}
                                     className="aspect-video w-full bg-surface-2 relative overflow-hidden cursor-pointer flex items-center justify-center"
                                 >
-                                    {yId ? (
+                                    {thumb ? (
                                         <img
-                                            src={`https://i.ytimg.com/vi/${yId}/hqdefault.jpg`}
+                                            src={thumb}
                                             alt=""
                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             onError={(e) => {
@@ -1782,7 +1853,7 @@ export function MultimediaTab({
                         const isVid = isVideoFormat(item.format);
                         const isSelected = selectedIds.has(item.id);
                         const isCurrentActive = activePlayingItem?.id === item.id;
-                        const yId = extractYtId(item.url, item.id);
+                        const thumb = getItemThumbnail(item, "mqdefault");
 
                         return (
                             <div
@@ -1803,9 +1874,9 @@ export function MultimediaTab({
                                         onClick={() => playMediaItem(item)}
                                         className="w-16 aspect-video rounded-md overflow-hidden bg-surface-2 shrink-0 relative flex items-center justify-center border border-border-subtle cursor-pointer group/item"
                                     >
-                                        {yId ? (
+                                        {thumb ? (
                                             <img
-                                                src={`https://i.ytimg.com/vi/${yId}/mqdefault.jpg`}
+                                                src={thumb}
                                                 alt=""
                                                 className="w-full h-full object-cover"
                                             />

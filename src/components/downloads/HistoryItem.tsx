@@ -22,6 +22,12 @@ import type { DownloadRecord } from "../../types";
 import { STATUS_DISPLAY, ERROR_MESSAGES } from "../../status";
 import { formatFileSize } from "../../lib/format";
 import { formatDisplayBadge, isAudioFormat } from "../../lib/formatClassify";
+import { convertFileSrc } from "@tauri-apps/api/core";
+
+function safeConvertFileSrc(filePath: string): string {
+    const sanitized = filePath.replace(/#/g, "%23").replace(/\?/g, "%3F");
+    return convertFileSrc(sanitized);
+}
 
 function extractYtId(url: string, id: string): string | null {
     if (!url && !id) return null;
@@ -73,6 +79,11 @@ export const HistoryItem = React.memo(function HistoryItem({
     const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
 
     const ytId = extractYtId(record.url, record.id);
+    const thumbUrl = ytId
+        ? `https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`
+        : record.thumbnail
+            ? (record.thumbnail.startsWith("http") || record.thumbnail.startsWith("asset") ? record.thumbnail : safeConvertFileSrc(record.thumbnail))
+            : null;
     const isAudio = isAudioFormat(record.format);
 
     const handleCopyUrl = async (e?: React.MouseEvent) => {
@@ -135,10 +146,10 @@ export const HistoryItem = React.memo(function HistoryItem({
                     <div className="w-full h-full flex items-center justify-center bg-status-danger-subtle text-status-danger">
                         <AlertCircle size={18} />
                     </div>
-                ) : ytId ? (
+                ) : thumbUrl ? (
                     <>
                         <img
-                            src={`https://i.ytimg.com/vi/${ytId}/mqdefault.jpg`}
+                            src={thumbUrl}
                             alt=""
                             className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-200"
                             onError={(e) => {

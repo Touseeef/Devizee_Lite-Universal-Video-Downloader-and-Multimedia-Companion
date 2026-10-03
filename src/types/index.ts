@@ -62,6 +62,7 @@ export type DownloadRecord = {
     file_size?: number | null;
     error_code?: ErrorCode;
     error_message?: string;
+    thumbnail?: string | null;
 };
 
 // Single source of truth for "what is playing, and is it playing or paused".

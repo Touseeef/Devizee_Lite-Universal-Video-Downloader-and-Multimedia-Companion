@@ -537,18 +537,33 @@ pub struct LocalMediaFile {
     pub is_audio: bool,
     pub file_size: u64,
     pub modified_time: i64,
+    pub thumbnail: Option<String>,
 }
 
 #[tauri::command]
-fn scan_local_folder(path: String) -> Result<Vec<LocalMediaFile>, String> {
+fn scan_local_folder(path: String, app: tauri::AppHandle) -> Result<Vec<LocalMediaFile>, String> {
     let root = PathBuf::from(path.trim());
     if !root.exists() || !root.is_dir() {
         return Err("Specified path does not exist or is not a directory".to_string());
     }
 
+    let thumb_dir = app
+        .path()
+        .app_local_data_dir()
+        .ok()
+        .map(|d| d.join("thumbnails"));
+    if let Some(ref td) = thumb_dir {
+        let _ = std::fs::create_dir_all(td);
+    }
+
     let mut results: Vec<LocalMediaFile> = Vec::new();
 
-    fn process_dir(dir: &std::path::Path, results: &mut Vec<LocalMediaFile>, depth: usize) {
+    fn process_dir(
+        dir: &std::path::Path,
+        results: &mut Vec<LocalMediaFile>,
+        thumb_dir: Option<&PathBuf>,
+        depth: usize,
+    ) {
         if depth > 3 {
             return;
         }
@@ -562,7 +577,7 @@ fn scan_local_folder(path: String) -> Result<Vec<LocalMediaFile>, String> {
             if p.is_dir() {
                 if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
                     if !name.starts_with('.') && name != "node_modules" && name != "$RECYCLE.BIN" {
-                        process_dir(&p, results, depth + 1);
+                        process_dir(&p, results, thumb_dir, depth + 1);
                     }
                 }
             } else if p.is_file() {
@@ -618,8 +633,25 @@ fn scan_local_folder(path: String) -> Result<Vec<LocalMediaFile>, String> {
 
                     use std::hash::{Hash, Hasher};
                     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    p.to_string_lossy().hash(&mut hasher);
-                    let id = format!("local-{:x}", hasher.finish());
+                    let norm_key = p.to_string_lossy().replace('\\', "/").to_lowercase();
+                    norm_key.hash(&mut hasher);
+                    let hash_id = format!("{:x}", hasher.finish());
+                    let id = format!("local-{}", hash_id);
+
+                    let cached_thumb = if is_vid {
+                        if let Some(td) = thumb_dir {
+                            let tp = td.join(format!("{}.jpg", hash_id));
+                            if tp.exists() && std::fs::metadata(&tp).map(|m| m.len() > 0).unwrap_or(false) {
+                                Some(tp.to_string_lossy().to_string())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
 
                     results.push(LocalMediaFile {
                         id,
@@ -629,15 +661,112 @@ fn scan_local_folder(path: String) -> Result<Vec<LocalMediaFile>, String> {
                         is_audio: is_aud,
                         file_size,
                         modified_time,
+                        thumbnail: cached_thumb,
                     });
                 }
             }
         }
     }
 
-    process_dir(&root, &mut results, 0);
+    process_dir(&root, &mut results, thumb_dir.as_ref(), 0);
     results.sort_by(|a, b| b.modified_time.cmp(&a.modified_time));
     Ok(results)
+}
+
+#[tauri::command]
+async fn get_video_thumbnail(
+    file_path: String,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let p = PathBuf::from(file_path.trim());
+        if !p.exists() || !p.is_file() {
+            return Err("File does not exist or is not a file".to_string());
+        }
+
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let norm_key = p.to_string_lossy().replace('\\', "/").to_lowercase();
+        norm_key.hash(&mut hasher);
+        let hash_id = format!("{:x}", hasher.finish());
+
+        let local_data = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|e| e.to_string())?;
+        let thumb_dir = local_data.join("thumbnails");
+        let _ = std::fs::create_dir_all(&thumb_dir);
+        let thumb_path = thumb_dir.join(format!("{}.jpg", hash_id));
+
+        if thumb_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&thumb_path) {
+                if meta.len() > 0 {
+                    return Ok(thumb_path.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        let ffmpeg_path = get_ffmpeg_path(&app).ok_or("FFmpeg binary not found")?;
+
+        // Fast seek at 1 second
+        let mut cmd = Command::new(&ffmpeg_path);
+        cmd.args([
+            "-ss",
+            "00:00:01",
+            "-i",
+            &p.to_string_lossy(),
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=320:-1",
+            "-q:v",
+            "3",
+            "-y",
+            &thumb_path.to_string_lossy(),
+        ]);
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+
+        let output = cmd.output();
+        let success = match output {
+            Ok(o) => o.status.success() && thumb_path.exists(),
+            Err(_) => false,
+        };
+
+        if !success {
+            // Fallback seek at 0 seconds (for very short clips)
+            let mut cmd2 = Command::new(&ffmpeg_path);
+            cmd2.args([
+                "-ss",
+                "00:00:00",
+                "-i",
+                &p.to_string_lossy(),
+                "-vframes",
+                "1",
+                "-vf",
+                "scale=320:-1",
+                "-q:v",
+                "3",
+                "-y",
+                &thumb_path.to_string_lossy(),
+            ]);
+            #[cfg(target_os = "windows")]
+            cmd2.creation_flags(0x08000000);
+            let _ = cmd2.output();
+        }
+
+        if thumb_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&thumb_path) {
+                if meta.len() > 0 {
+                    return Ok(thumb_path.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        Err("Failed to extract video thumbnail".to_string())
+    })
+    .await
+    .map_err(|e| format!("Thumbnail generation thread error: {}", e))?
 }
 
 
@@ -1094,6 +1223,7 @@ pub fn run() {
             engine::update_engine,
             bridge::get_installed_browsers,
             scan_local_folder,
+            get_video_thumbnail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
