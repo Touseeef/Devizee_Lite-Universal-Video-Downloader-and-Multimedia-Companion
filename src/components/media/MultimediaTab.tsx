@@ -36,7 +36,7 @@ import type { DownloadRecord, NowPlaying } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
 import { formatFileSize } from "../../lib/format";
 import { formatDisplayBadge } from "../../lib/formatClassify";
-import { routeAudioDevice, attachEqualizerToMedia } from "../../lib/audioContext";
+import { routeAudioDevice, attachEqualizerToMedia, ensureAudioContext } from "../../lib/audioContext";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -369,22 +369,29 @@ export function MultimediaTab({
         let isCancelled = false;
 
         const generateThumbs = async () => {
+            const batch: Record<string, string> = {};
+            let count = 0;
             for (const item of uniqueItems) {
                 if (isCancelled) break;
                 try {
                     const thumbPath = await invoke<string>("get_video_thumbnail", { filePath: item.file_path });
                     if (thumbPath && !isCancelled) {
                         const assetUrl = safeConvertFileSrc(thumbPath);
-                        setLocalThumbnails((prev) => ({
-                            ...prev,
-                            [item.file_path!]: assetUrl,
-                        }));
+                        batch[item.file_path!] = assetUrl;
+                        count++;
+                        if (count >= 4) {
+                            setLocalThumbnails((prev) => ({ ...prev, ...batch }));
+                            count = 0;
+                        }
                     }
                 } catch {
                     // Silently ignore extraction errors
                 }
                 // Yield to browser main thread between extractions
-                await new Promise((r) => setTimeout(r, 120));
+                await new Promise((r) => setTimeout(r, 150));
+            }
+            if (!isCancelled && count > 0) {
+                setLocalThumbnails((prev) => ({ ...prev, ...batch }));
             }
         };
 
@@ -517,21 +524,11 @@ export function MultimediaTab({
     // Sync global master volume into whichever media element is loaded
     useEffect(() => {
         const effective = isMuted ? 0 : volume;
-        if (videoRef.current) {
-            videoRef.current.volume = effective;
-            attachEqualizerToMedia(videoRef.current);
-        }
+        if (videoRef.current) videoRef.current.volume = effective;
         if (audioRef.current) {
             audioRef.current.volume = effective;
             attachEqualizerToMedia(audioRef.current);
         }
-    }, [volume, isMuted, activePlayingItem]);
-
-    // Sync the global master volume to whichever media element is loaded
-    useEffect(() => {
-        const effective = isMuted ? 0 : volume;
-        if (videoRef.current) videoRef.current.volume = effective;
-        if (audioRef.current) audioRef.current.volume = effective;
     }, [volume, isMuted, activePlayingItem]);
 
     // Mutual exclusion: pause if media outside Multimedia starts playing.
@@ -614,11 +611,14 @@ export function MultimediaTab({
             const el = audioRef.current;
             if (!el) return;
             el.pause();
+            const ctx = ensureAudioContext();
+            if (ctx && ctx.state === "suspended") {
+                ctx.resume().catch(() => { });
+            }
             attachEqualizerToMedia(el);       // idempotent — runs once
             el.src = src;
             el.volume = isMuted ? 0 : volume;
             routeAudioDevice(selectedAudioDevice || "default", el);
-            el.load();
             el.play()
                 .then(() => {
                     if (requestId !== playRequestIdRef.current) return;
@@ -1055,7 +1055,7 @@ export function MultimediaTab({
 
                             {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover) */}
                             {isFullscreen && (
-                                <div className="absolute bottom-0 inset-x-0 z-40 px-5 pt-3 pb-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <div className="absolute bottom-0 inset-x-0 z-40 px-6 pt-2.5 pb-2 bg-gradient-to-t from-black/95 via-black/75 to-transparent flex flex-col gap-1.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                                     {/* Fullscreen Scrubber */}
                                     <div className="flex items-center gap-3 w-full">
                                         <span className="text-[11px] font-mono text-white/70 w-12 text-left">

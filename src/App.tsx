@@ -330,6 +330,13 @@ export default function App() {
     }
   };
 
+  // Sync EQ preset on mount
+  useEffect(() => {
+    if (selectedEqPreset && selectedEqPreset !== "custom") {
+      applyEqualizerPreset(selectedEqPreset);
+    }
+  }, []);
+
 
   // Clip-Before-Download (Trimming USP) State
   const [isTrimming, setIsTrimming] = useState(false);

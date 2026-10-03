@@ -42,12 +42,14 @@ pub(crate) fn categorize_error(stderr: &str) -> &'static str {
         || lower.contains("http error 5")
     {
         "network"
-    } else if lower.contains("sign in to confirm your age")
-        || lower.contains("age-restricted")
-        || lower.contains("confirm you're not a bot")
+    } else if lower.contains("sign in to confirm")
+        || lower.contains("not a bot")
         || lower.contains("bot detection")
+        || lower.contains("cookies-from-browser")
+        || lower.contains("sign in to confirm your age")
+        || lower.contains("age-restricted")
     {
-        "age_restricted"
+        "auth_required"
     } else if lower.contains("video unavailable")
         || lower.contains("video is unavailable")
         || lower.contains("unavailable")
@@ -622,10 +624,14 @@ pub async fn start_download(
                 "--embed-thumbnail",
             ]);
         } else {
-            let sanitized_fmt = if format_id.contains('(') || format_id.contains(' ') || format_id.is_empty() {
+            let sanitized_fmt = if format_id.is_empty()
+                || format_id == "best"
+                || format_id.contains('(')
+                || format_id.contains(' ')
+            {
                 "bestvideo+bestaudio/best".to_string()
-            } else if !format_id.contains('/') && !format_id.contains("best") {
-                format!("{}/bestvideo+bestaudio/best", format_id)
+            } else if !format_id.contains('/') && !format_id.contains('+') && !format_id.contains("best") {
+                format!("{}+bestaudio/best", format_id)
             } else {
                 format_id.clone()
             };

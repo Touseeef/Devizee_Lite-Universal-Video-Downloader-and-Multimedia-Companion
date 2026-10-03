@@ -68,9 +68,12 @@ export function ensureAudioContext(): AudioContext | null {
  * crossOrigin="anonymous" for cross-origin (asset://) sources.
  */
 export function attachEqualizerToMedia(element: HTMLMediaElement): boolean {
-    if (elementFilterChains.has(element)) return true;
-
     const ctx = ensureAudioContext();
+    if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => { });
+    }
+
+    if (elementFilterChains.has(element)) return true;
     if (!ctx) return false;
 
     try {
@@ -106,11 +109,10 @@ export function attachEqualizerToMedia(element: HTMLMediaElement): boolean {
         elementFilterChains.set(element, filters);
         allActiveFilterChains.add(filters);
 
-        // Clean up when the media element is removed from DOM
-        const cleanup = () => {
-            allActiveFilterChains.delete(filters);
-        };
-        element.addEventListener("emptied", cleanup, { once: true });
+        // NOTE: Do NOT listen for "emptied" — that event fires on every
+        // src change between tracks, which would orphan the filter chain.
+        // The chain must persist for the element's entire lifetime because
+        // createMediaElementSource can only be called ONCE per element.
 
         console.log("[Devizee EQ] Attached 8-band EQ");
         return true;
