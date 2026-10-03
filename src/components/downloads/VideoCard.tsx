@@ -282,6 +282,16 @@ export function VideoCard({
             if (isAudioPreviewing) {
                 toggleAudioPreview(videoInfo.url, videoInfo.id, true);
             } else {
+                // If YouTube iframe player is active, reload iframe source
+                if (iframeRef?.current && iframeRef.current.src) {
+                    const currentSrc = iframeRef.current.src;
+                    iframeRef.current.src = "about:blank";
+                    setTimeout(() => {
+                        if (iframeRef?.current) {
+                            iframeRef.current.src = currentSrc;
+                        }
+                    }, 50);
+                }
                 await handlePlayVideo({
                     id: videoInfo.id,
                     url: videoInfo.url,
