@@ -27,7 +27,9 @@ export function EqualizerDropdown({
         return () => document.removeEventListener("mousedown", handleOutsideClick);
     }, [open]);
 
-    const activePresetObj = EQ_PRESETS.find((p) => p.id === selectedPreset) || EQ_PRESETS[0];
+    const activePresetObj = selectedPreset === "custom"
+        ? { id: "custom", name: "Custom", gains: [] }
+        : (EQ_PRESETS.find((p) => p.id === selectedPreset) || EQ_PRESETS[0]);
     const activeLabel = activePresetObj.name;
 
     const panelPosition =
@@ -68,6 +70,16 @@ export function EqualizerDropdown({
                     <div className="px-2 py-1 text-[10px] uppercase font-bold text-tertiary tracking-wider border-b border-border-subtle/50 mb-1 flex items-center justify-between">
                         <span>Audio Equalizer</span>
                     </div>
+
+                    {selectedPreset === "custom" && (
+                        <div className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-caption bg-accent/10 text-accent font-semibold ring-1 ring-inset ring-accent/30 mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <Sliders size={13} className="text-accent shrink-0" />
+                                <span className="truncate">Custom (Manual)</span>
+                            </div>
+                            <Check size={12} className="shrink-0 text-accent" />
+                        </div>
+                    )}
 
                     {EQ_PRESETS.map((preset) => {
                         const isSelected = preset.id === selectedPreset;

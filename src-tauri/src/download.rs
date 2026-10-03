@@ -554,7 +554,7 @@ pub async fn start_download(
             "no-youtube-unavailable-videos",
             "--no-abort-on-error",
             "--extractor-args",
-            "youtube:player_client=android,web;skip=dash,translated_subs,comments",
+            "youtube:skip=translated_subs,comments",
             // SEC-7 (defense-in-depth): sanitise expanded template values so that
             // untrusted video titles cannot introduce path separators into filenames.
             "--restrict-filenames",

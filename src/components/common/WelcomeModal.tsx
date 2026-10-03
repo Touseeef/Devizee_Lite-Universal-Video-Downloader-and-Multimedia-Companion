@@ -36,7 +36,7 @@ export function WelcomeModal({
                                         Welcome to Devizee Lite
                                     </h2>
                                     <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent text-[10px] font-bold">
-                                        v0.7.0
+                                        v0.7.1
                                     </span>
                                 </div>
                                 <p className="text-caption text-secondary mt-0.5">

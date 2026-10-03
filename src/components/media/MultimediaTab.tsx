@@ -39,6 +39,7 @@ import { formatDisplayBadge } from "../../lib/formatClassify";
 import { routeAudioDevice, attachEqualizerToMedia } from "../../lib/audioContext";
 import { WaveformVisualizer } from "../common/WaveformVisualizer";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 function safeConvertFileSrc(filePath: string): string {
     const sanitized = filePath.replace(/#/g, "%23").replace(/\?/g, "%3F");
@@ -317,11 +318,21 @@ export function MultimediaTab({
     }, [currentQueue]);
 
     useEffect(() => {
-        const handleFs = () => {
-            setIsFullscreen(!!document.fullscreenElement);
+        const handleFs = async () => {
+            const isFs = !!document.fullscreenElement;
+            setIsFullscreen(isFs);
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setFullscreen(isFs);
+            } catch { }
         };
         document.addEventListener("fullscreenchange", handleFs);
-        return () => document.removeEventListener("fullscreenchange", handleFs);
+        return () => {
+            document.removeEventListener("fullscreenchange", handleFs);
+            try {
+                getCurrentWindow().setFullscreen(false);
+            } catch { }
+        };
     }, []);
 
     const handleVolumeChange = (newVol: number) => {
@@ -332,13 +343,26 @@ export function MultimediaTab({
         onToggleMute();
     };
 
-    const toggleFullscreen = () => {
+    const toggleFullscreen = async () => {
         if (!mediaContainerRef.current) return;
-        if (!document.fullscreenElement) {
-            mediaContainerRef.current.requestFullscreen().catch(() => { });
+        const appWindow = getCurrentWindow();
+        if (!document.fullscreenElement && !isFullscreen) {
+            try {
+                await mediaContainerRef.current.requestFullscreen();
+            } catch { }
+            try {
+                await appWindow.setFullscreen(true);
+            } catch { }
             setIsFullscreen(true);
         } else {
-            document.exitFullscreen().catch(() => { });
+            try {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen();
+                }
+            } catch { }
+            try {
+                await appWindow.setFullscreen(false);
+            } catch { }
             setIsFullscreen(false);
         }
     };
@@ -747,7 +771,7 @@ export function MultimediaTab({
                             }}
                             className={
                                 isFullscreen
-                                    ? "fixed inset-0 w-screen h-screen z-50 rounded-none border-none bg-black flex items-center justify-center overflow-hidden group select-none aspect-auto"
+                                    ? "fixed inset-0 w-full h-full z-50 rounded-none border-0 bg-black flex items-center justify-center overflow-hidden group select-none aspect-auto"
                                     : "lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
                             }
                         >
@@ -955,7 +979,7 @@ export function MultimediaTab({
 
                             {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover) */}
                             {isFullscreen && (
-                                <div className="absolute bottom-0 inset-x-0 z-40 px-5 pt-4 pb-3.5 bg-gradient-to-t from-black/90 via-black/60 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <div className="absolute bottom-0 inset-x-0 z-40 px-5 pt-3 pb-3 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col gap-2 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
                                     {/* Fullscreen Scrubber */}
                                     <div className="flex items-center gap-3 w-full">
                                         <span className="text-[11px] font-mono text-white/70 w-12 text-left">

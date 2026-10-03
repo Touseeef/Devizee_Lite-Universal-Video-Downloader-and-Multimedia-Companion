@@ -142,7 +142,7 @@ pub async fn fetch_video_info(
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
-        "youtube:player_client=android,web;skip=dash,translated_subs,comments",
+        "youtube:skip=translated_subs,comments",
     ]);
 
     if allow_insecure_ssl == Some(true) {
@@ -406,7 +406,7 @@ pub async fn get_audio_stream_url(
         "3",
         "--no-warnings",
         "--extractor-args",
-        "youtube:player_client=android,web;skip=dash,translated_subs,comments",
+        "youtube:skip=translated_subs,comments",
     ]);
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
@@ -447,7 +447,7 @@ pub async fn get_video_stream_url(
         "3",
         "--no-warnings",
         "--extractor-args",
-        "youtube:skip=dash,translated_subs,comments",
+        "youtube:skip=translated_subs,comments",
     ]);
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);
@@ -498,7 +498,7 @@ pub async fn fetch_playlist_info(
         "--compat-options",
         "no-youtube-unavailable-videos",
         "--extractor-args",
-        "youtube:player_client=android,web;skip=dash,translated_subs,comments",
+        "youtube:skip=translated_subs,comments",
     ]);
     for arg in cookies_args(cookies_from_browser) {
         cmd.arg(arg);

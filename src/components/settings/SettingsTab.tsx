@@ -26,7 +26,7 @@ import { ThemeDropdown } from "../common/ThemeDropdown";
 import type { TranslationKey } from "../../lib/i18n";
 import { VerticalEqSlider } from "../common/VerticalEqSlider";
 
-import { currentEqGains, setGlobalEqualizerGains } from "../../lib/audioContext";
+import { currentEqGains, setGlobalEqualizerGains, EQ_PRESETS } from "../../lib/audioContext";
 
 type SettingsTabId =
     | "general"
@@ -37,16 +37,6 @@ type SettingsTabId =
     | "about";
 
 const EQ_FREQUENCIES = ["60Hz", "150Hz", "400Hz", "1kHz", "2.4kHz", "6kHz", "12kHz", "16kHz"];
-const EQ_PRESETS: Record<string, number[]> = {
-    "Flat": [0, 0, 0, 0, 0, 0, 0, 0],
-    "Bass Boost": [6, 5, 3, 0, -1, -1, 0, 1],
-    "Vocal": [-2, -1, 1, 4, 4, 3, 1, 0],
-    "EDM": [6, 4, 0, -2, 2, 4, 5, 4],
-    "Rock": [5, 3, -1, -2, 1, 3, 5, 5],
-    "Movie": [4, 3, 0, 1, 2, 4, 3, 2],
-    "Acoustic": [3, 2, 0, 1, 2, 3, 3, 2],
-    "Classical": [4, 3, 2, 0, 0, 1, 3, 4],
-};
 
 export function SettingsTab({
     t,
@@ -65,6 +55,8 @@ export function SettingsTab({
     handleBrowseFolder,
     openFolder,
     onOpenSupportedSites,
+    selectedEqPreset = "flat",
+    onSelectEqPreset,
 }: {
     t: (key: TranslationKey) => string;
     settings: any;
@@ -92,11 +84,22 @@ export function SettingsTab({
     ) => void;
     openFolder: (path?: string | null) => void;
     onOpenSupportedSites?: () => void;
+    selectedEqPreset?: string;
+    onSelectEqPreset?: (presetId: string) => void;
 }) {
     const [activeSection, setActiveSection] = useState<SettingsTabId>("general");
     const [eqBands, setEqBands] = useState<number[]>([...currentEqGains]);
-    const [activePreset, setActivePreset] = useState<string>("Flat");
     const [diagCopied, setDiagCopied] = useState(false);
+
+    // Sync equalizer bands whenever selectedEqPreset changes from sidebar or elsewhere
+    useEffect(() => {
+        if (selectedEqPreset && selectedEqPreset !== "custom") {
+            const p = EQ_PRESETS.find((x) => x.id === selectedEqPreset);
+            if (p) {
+                setEqBands([...p.gains]);
+            }
+        }
+    }, [selectedEqPreset]);
 
     // Engine Core (yt-dlp) update state
     const [engineInfo, setEngineInfo] = useState<{ current_version: string; binary_path: string; is_custom_updated: boolean } | null>(null);
@@ -226,12 +229,12 @@ export function SettingsTab({
         { id: "about", label: "About & Roadmap", icon: Shield },
     ];
 
-    const applyEqPreset = (name: string) => {
-        const preset = EQ_PRESETS[name];
-        if (preset) {
-            setEqBands([...preset]);
-            setActivePreset(name);
-            setGlobalEqualizerGains(preset);
+    const applyEqPreset = (presetId: string) => {
+        const p = EQ_PRESETS.find((x) => x.id === presetId);
+        if (p) {
+            setEqBands([...p.gains]);
+            setGlobalEqualizerGains(p.gains);
+            onSelectEqPreset?.(presetId);
         }
     };
 
@@ -239,7 +242,7 @@ export function SettingsTab({
         const next = [...eqBands];
         next[index] = val;
         setEqBands(next);
-        setActivePreset("Custom");
+        onSelectEqPreset?.("custom");
         setGlobalEqualizerGains(next);
     };
 
@@ -787,7 +790,7 @@ export function SettingsTab({
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => applyEqPreset("Flat")}
+                                    onClick={() => applyEqPreset("flat")}
                                     className="px-3 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-semibold text-secondary hover:text-primary transition-colors cursor-pointer"
                                 >
                                     Reset to Flat
@@ -798,19 +801,27 @@ export function SettingsTab({
                         {/* Presets Bar */}
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                             <span className="text-[11px] font-bold text-tertiary uppercase tracking-wider mr-1 shrink-0">Presets:</span>
-                            {Object.keys(EQ_PRESETS).map((name) => (
-                                <button
-                                    key={name}
-                                    type="button"
-                                    onClick={() => applyEqPreset(name)}
-                                    className={`px-3 py-1 rounded-lg text-caption font-semibold transition-all shrink-0 cursor-pointer ${activePreset === name
-                                        ? "bg-accent text-white shadow-2xs font-bold"
-                                        : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border border-border-subtle/50"
-                                        }`}
-                                >
-                                    {name}
-                                </button>
-                            ))}
+                            {EQ_PRESETS.map((p) => {
+                                const isSelected = selectedEqPreset === p.id;
+                                return (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => applyEqPreset(p.id)}
+                                        className={`px-3 py-1 rounded-lg text-caption font-semibold transition-all shrink-0 cursor-pointer ${isSelected
+                                            ? "bg-accent text-white shadow-2xs font-bold"
+                                            : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border border-border-subtle/50"
+                                            }`}
+                                    >
+                                        {p.name.replace(/ \(Default\)/, "")}
+                                    </button>
+                                );
+                            })}
+                            {selectedEqPreset === "custom" && (
+                                <span className="px-3 py-1 rounded-lg text-caption font-bold bg-accent/20 text-accent border border-accent/40 shrink-0">
+                                    Custom (Manual)
+                                </span>
+                            )}
                         </div>
 
                         {/* Sliders Grid — Custom Pointer-Based Sliders */}
@@ -970,7 +981,7 @@ export function SettingsTab({
                                     <div className="flex items-center gap-2">
                                         <h3 className="font-extrabold text-title-sm text-primary tracking-tight">Devizee Lite - Universal Video Downloader</h3>
                                         <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent text-[11px] font-bold">
-                                            v0.7.0
+                                            v0.7.1
                                         </span>
                                     </div>
                                     <p className="text-caption text-secondary">Universal High-Performance Media Downloader • Tauri v2 & Rust Native</p>
@@ -1063,7 +1074,7 @@ export function SettingsTab({
                                     const match = navigator.userAgent.match(/Edg\/([\d.]+)/);
                                     const webview = match ? match[1] : "unknown";
                                     const info = [
-                                        "Devizee Lite v0.7.0",
+                                        "Devizee Lite v0.7.1",
                                         `Platform: ${navigator.platform}`,
                                         `User agent: ${navigator.userAgent}`,
                                         `WebView2: ${webview}`,
@@ -1100,7 +1111,7 @@ export function SettingsTab({
                             </button>
                         </div>
                         <pre className="p-3 rounded-xl bg-surface-2/60 border border-border-subtle text-[11px] font-mono text-secondary leading-relaxed whitespace-pre-wrap overflow-x-auto">
-                            {`Devizee Lite v0.7.0 · Tauri v2 · Rust + React
+                            {`Devizee Lite v0.7.1 · Tauri v2 · Rust + React
 Repository: github.com/Touseeef/devizee-lite-universal-video-downloader
 Privacy: Zero telemetry. All processing local.`}
                         </pre>

@@ -325,7 +325,9 @@ export default function App() {
 
   const handleEqPresetChange = (presetId: string) => {
     setSelectedEqPreset(presetId);
-    applyEqualizerPreset(presetId);
+    if (presetId !== "custom") {
+      applyEqualizerPreset(presetId);
+    }
   };
 
 
@@ -3032,6 +3034,8 @@ function detectAudioMime(arr: Uint8Array): string {
             handleBrowseFolder={handleBrowseFolder}
             openFolder={openFolder}
             onOpenSupportedSites={() => setIsSupportedSitesOpen(true)}
+            selectedEqPreset={selectedEqPreset}
+            onSelectEqPreset={handleEqPresetChange}
           />
         </div>
 

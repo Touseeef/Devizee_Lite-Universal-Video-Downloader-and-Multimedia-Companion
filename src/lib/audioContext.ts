@@ -15,6 +15,7 @@ export const EQ_PRESETS: EqPreset[] = [
     { id: "pop", name: "Pop", gains: [-1, 2, 3, 3, 2, -1, 1, 2] },
     { id: "acoustic", name: "Acoustic / Classical", gains: [3.5, 2.5, 1.5, 0, 1, 2, 3, 3.5] },
     { id: "treble", name: "Treble Boost", gains: [-2, -1, 0, 0, 1.5, 3, 5, 6] },
+    { id: "movie", name: "Movie / Cinema", gains: [4, 3, 0, 1, 2, 4, 3, 2] },
 ];
 
 let initialGains = [0, 0, 0, 0, 0, 0, 0, 0];
