@@ -82,9 +82,8 @@ export function WaveformVisualizer({
         let phase = 0;
         let last: number | null = null;
 
-        // Clean static resting state: draw clean, flat 2px rounded pills and stop RAF loop completely
-        if (!isPlaying) {
-            refreshColors();     // D4: pick up current theme colors when paused too
+        const drawResting = () => {
+            refreshColors();
             ctx.clearRect(0, 0, width, height);
             ctx.fillStyle = inactive;
             ctx.globalAlpha = 0.35;
@@ -101,11 +100,29 @@ export function WaveformVisualizer({
                 ctx.fill();
             }
             ctx.globalAlpha = 1;
+        };
+
+        const isMediaActuallyPlaying = () => {
+            if (!isPlaying) return false;
+            if (mediaElement) {
+                return !mediaElement.paused && !mediaElement.ended;
+            }
+            return true;
+        };
+
+        // If not playing or media is paused/ended, render resting state and do not loop
+        if (!isMediaActuallyPlaying()) {
+            drawResting();
             return;
         }
 
         let frameCount = 0;
         const draw = (now: number) => {
+            if (!isMediaActuallyPlaying()) {
+                drawResting();
+                return;
+            }
+
             raf = requestAnimationFrame(draw);
             if (last !== null) phase += (now - last) * 0.007;
             last = now;
@@ -149,8 +166,34 @@ export function WaveformVisualizer({
         };
 
         raf = requestAnimationFrame(draw);
-        return () => cancelAnimationFrame(raf);
-    }, [isPlaying, width, height, barCount]);
+
+        // Listen for media element pause/play/ended to sync instantly
+        const onMediaStateChange = () => {
+            if (!isMediaActuallyPlaying()) {
+                if (raf) cancelAnimationFrame(raf);
+                drawResting();
+            } else if (!raf) {
+                raf = requestAnimationFrame(draw);
+            }
+        };
+
+        if (mediaElement) {
+            mediaElement.addEventListener("pause", onMediaStateChange);
+            mediaElement.addEventListener("ended", onMediaStateChange);
+            mediaElement.addEventListener("play", onMediaStateChange);
+            mediaElement.addEventListener("emptied", onMediaStateChange);
+        }
+
+        return () => {
+            if (raf) cancelAnimationFrame(raf);
+            if (mediaElement) {
+                mediaElement.removeEventListener("pause", onMediaStateChange);
+                mediaElement.removeEventListener("ended", onMediaStateChange);
+                mediaElement.removeEventListener("play", onMediaStateChange);
+                mediaElement.removeEventListener("emptied", onMediaStateChange);
+            }
+        };
+    }, [isPlaying, mediaElement, width, height, barCount]);
 
     const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
         if (!onSeek || !mediaElement) return;

@@ -290,28 +290,37 @@ export function Sidebar({
                             <span>Equalizer</span>
                         </div>
                     )}
-                    <div className="flex items-center gap-1.5">
-                        <div className="flex-1 min-w-0">
-                            <EqualizerDropdown
-                                selectedPreset={selectedEqPreset}
-                                onSelectPreset={onSelectEqPreset || (() => { })}
-                                placement={collapsed ? "right" : "up"}
-                                compact={collapsed}
-                            />
+                    {collapsed ? (
+                        <EqualizerDropdown
+                            selectedPreset={selectedEqPreset}
+                            onSelectPreset={onSelectEqPreset || (() => { })}
+                            placement="right"
+                            compact={true}
+                        />
+                    ) : (
+                        <div className="flex items-center gap-1.5">
+                            <div className="flex-1 min-w-0">
+                                <EqualizerDropdown
+                                    selectedPreset={selectedEqPreset}
+                                    onSelectPreset={onSelectEqPreset || (() => { })}
+                                    placement="up"
+                                    compact={false}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setActiveTab("settings");
+                                    try { localStorage.setItem("devizee_settings_section", "audio"); } catch { }
+                                    window.dispatchEvent(new CustomEvent("devizee-navigate-settings", { detail: { section: "audio" } }));
+                                }}
+                                className="h-8.5 w-8.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-secondary hover:text-accent flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                                title="Equalizer Tuning in Settings"
+                            >
+                                <Sliders size={14} />
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setActiveTab("settings");
-                                try { localStorage.setItem("devizee_settings_section", "audio"); } catch { }
-                                window.dispatchEvent(new CustomEvent("devizee-navigate-settings", { detail: { section: "audio" } }));
-                            }}
-                            className="p-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-secondary hover:text-accent flex items-center justify-center transition-colors cursor-pointer shrink-0"
-                            title="Open Equalizer Tuning in Settings"
-                        >
-                            <Sliders size={13} />
-                        </button>
-                    </div>
+                    )}
                 </div>
             </div>
 

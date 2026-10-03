@@ -200,11 +200,16 @@ export function SettingsTab({
                 setAppUpdateAvailable(update);
                 setAppUpdateMessage(`Devizee Desktop v${update.version} is available!`);
             } else {
-                setAppUpdateMessage("Devizee is up to date (running latest release).");
+                setAppUpdateMessage("Devizee Lite is up to date (running v0.7.2).");
                 setAppUpdateAvailable(null);
             }
         } catch (err: any) {
-            setAppUpdateMessage(`Update check failed: ${err}`);
+            const errStr = String(err);
+            if (errStr.includes("Could not fetch a valid release JSON") || errStr.includes("404") || errStr.includes("not found") || errStr.includes("network")) {
+                setAppUpdateMessage("You are running Devizee Lite v0.7.2 (Latest build). No remote update manifest found.");
+            } else {
+                setAppUpdateMessage(`Update check: ${errStr}`);
+            }
         } finally {
             setIsCheckingAppUpdate(false);
         }
@@ -420,6 +425,17 @@ export function SettingsTab({
                                 <RefreshCw size={13} className={isCheckingAppUpdate ? "animate-spin" : ""} />
                                 <span>{isCheckingAppUpdate ? "Checking..." : "Check for App Update"}</span>
                             </button>
+
+                            <a
+                                href="https://github.com/Touseeef/Devizee_Lite-Universal-Video-Downloader-and-Multimedia-Companion/releases"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-caption font-semibold flex items-center gap-1.5 text-secondary hover:text-primary border border-border-subtle transition-colors cursor-pointer shrink-0"
+                                title="Open GitHub Releases in browser"
+                            >
+                                <span>GitHub Releases</span>
+                                <ExternalLink size={12} />
+                            </a>
 
                             {appUpdateAvailable && (
                                 <button

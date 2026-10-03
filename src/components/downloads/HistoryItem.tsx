@@ -427,10 +427,18 @@ export const HistoryItem = React.memo(function HistoryItem({
                                 </button>
 
                                 {menuOpen && (
-                                    <div className="absolute right-0 top-full mt-1 w-44 bg-surface-1 rounded-xl shadow-floating p-1 z-30 animate-in zoom-in-95 duration-fast border border-border-subtle">
+                                    <div
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        className="absolute right-0 top-full mt-1 w-44 bg-surface-1 rounded-xl shadow-floating p-1 z-30 animate-in zoom-in-95 duration-fast border border-border-subtle"
+                                    >
                                         {record.status === "completed" && (
                                             <button
-                                                onClick={onOpenFolder}
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setMenuOpen(false);
+                                                    onOpenFolder();
+                                                }}
                                                 className="w-full text-left px-2.5 py-1.5 text-caption font-semibold text-primary hover:bg-surface-2 rounded-lg flex items-center gap-2 cursor-pointer"
                                             >
                                                 <Folder size={13} /> {tOpenFolder}
@@ -438,21 +446,36 @@ export const HistoryItem = React.memo(function HistoryItem({
                                         )}
                                         {record.url && (
                                             <button
-                                                onClick={handleCopyUrl}
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setMenuOpen(false);
+                                                    handleCopyUrl();
+                                                }}
                                                 className="w-full text-left px-2.5 py-1.5 text-caption font-semibold text-primary hover:bg-surface-2 rounded-lg flex items-center gap-2 cursor-pointer"
                                             >
                                                 <Copy size={13} /> Copy Link
                                             </button>
                                         )}
                                         <button
-                                            onClick={onRemove}
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                onRemove();
+                                            }}
                                             className="w-full text-left px-2.5 py-1.5 text-caption font-semibold text-primary hover:bg-surface-2 rounded-lg flex items-center gap-2 cursor-pointer"
                                         >
                                             <X size={13} /> {tRemoveRow}
                                         </button>
                                         {record.file_path && (
                                             <button
-                                                onClick={onDeleteFile}
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setMenuOpen(false);
+                                                    onDeleteFile();
+                                                }}
                                                 className="w-full text-left px-2.5 py-1.5 text-caption font-semibold text-status-danger hover:bg-status-danger-subtle rounded-lg flex items-center gap-2 cursor-pointer"
                                             >
                                                 <Trash2 size={13} /> {tDeleteFile}

@@ -141,6 +141,14 @@ export default function App() {
     setShowPreviews(true);
     setIsTrimming(false);
     setActiveCardTaskId(null);
+    setActiveVideoPlaying(false);
+    setVideoStreamUrl(null);
+    if (videoElementRef.current) {
+      try { videoElementRef.current.pause(); } catch {}
+    }
+    sendIframeCommand("pauseVideo");
+    setNowPlaying({ type: "none" });
+    nowPlayingRef.current = { type: "none" };
   };
 
   // YouTube IFrame API PostMessage Command Dispatcher

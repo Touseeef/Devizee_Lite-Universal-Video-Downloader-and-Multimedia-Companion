@@ -90,6 +90,16 @@ export function UrlInput({
                             setUrl(e.target.value);
                             if (!e.target.value.trim()) onClear();
                         }}
+                        onPaste={(e) => {
+                            const pasted = e.clipboardData?.getData("text")?.trim();
+                            if (pasted) {
+                                setUrl(pasted);
+                                if (/^https?:\/\//i.test(pasted)) {
+                                    e.preventDefault();
+                                    onAnalyze(undefined, pasted);
+                                }
+                            }
+                        }}
                     />
 
                     <div className="flex items-center gap-1.5 pr-2.5 shrink-0">

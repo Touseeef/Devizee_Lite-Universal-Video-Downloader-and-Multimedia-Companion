@@ -128,6 +128,7 @@ export function useDownloadQueue({
         handleRetryDownload(rec);
       }
     }
+    loadHistory();
   };
 
   const handleCancelSelected = async () => {
@@ -152,11 +153,13 @@ export function useDownloadQueue({
   const handleRemoveSelected = async () => {
     for (const id of selectedHistoryItems) {
       try {
-        await invoke("remove_history_record", { id });
-      } catch {}
+        await invoke("hide_history_item", { id });
+      } catch (e) {
+        console.error("Remove failed for", id, e);
+      }
     }
     setSelectedHistoryItems(new Set());
-    loadHistory();
+    await loadHistory();
   };
 
   const handleDeleteSelected = async () => {
@@ -165,15 +168,20 @@ export function useDownloadQueue({
       if (rec) {
         try {
           if (rec.file_path) {
-            await invoke("delete_file_and_record", { id: rec.id, filePath: rec.file_path });
+            await invoke("delete_history_file", { id: rec.id, filePath: rec.file_path });
           } else {
-            await invoke("remove_history_record", { id: rec.id });
+            await invoke("hide_history_item", { id: rec.id });
           }
-        } catch {}
+        } catch (e) {
+          console.error("Delete failed for", id, e);
+          try {
+            await invoke("hide_history_item", { id: rec.id });
+          } catch {}
+        }
       }
     }
     setSelectedHistoryItems(new Set());
-    loadHistory();
+    await loadHistory();
   };
 
   return {
