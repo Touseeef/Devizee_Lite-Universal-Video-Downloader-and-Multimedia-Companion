@@ -186,11 +186,10 @@ export function MultimediaTab({
     // We stash the intent here and flush it in a useEffect after re-render.
     const pendingVideoPlayRef = useRef<string | null>(null);
 
-    // Attach the 8-band Web Audio equalizer to the media elements.
+    // Attach the 8-band Web Audio equalizer to the audio element.
     // Runs once after mount — attach is idempotent, so repeated calls are safe.
     useEffect(() => {
         if (audioRef.current) attachEqualizerToMedia(audioRef.current);
-        if (videoRef.current) attachEqualizerToMedia(videoRef.current);
     }, []);
 
     type LocalMediaFile = {
@@ -267,14 +266,22 @@ export function MultimediaTab({
 
     useEffect(() => {
         scanFolders(customFolders);
-    }, [customFolders, history]);
+    }, [customFolders]);
 
     // Filter completed multimedia items (merges SQLite history and local scanned items)
     const allMediaItems = useMemo(() => {
         const historyCompleted = history.filter(
             (h) => h.status === "completed" && (isVideoFormat(h.format) || isAudioFormat(h.format))
         );
-        return [...historyCompleted, ...scannedLocalItems];
+        const historyPaths = new Set(
+            historyCompleted
+                .filter((h) => h.file_path)
+                .map((h) => h.file_path!.replace(/\\/g, "/").toLowerCase())
+        );
+        const dedupedScanned = scannedLocalItems.filter(
+            (s) => !s.file_path || !historyPaths.has(s.file_path.replace(/\\/g, "/").toLowerCase())
+        );
+        return [...historyCompleted, ...dedupedScanned];
     }, [history, scannedLocalItems, isVideoFormat, isAudioFormat]);
 
     const folderFilteredItems = useMemo(() => {
@@ -337,11 +344,11 @@ export function MultimediaTab({
         return currentQueue;
     }, [currentQueue]);
 
-    // Background thumbnail generator for local video files
+    // Background thumbnail generator for local video files (throttled & pauses during active playback)
     useEffect(() => {
-        const allCandidates = [...displayedItems, ...upcomingQueue];
-        if (activePlayingItem) allCandidates.push(activePlayingItem);
+        if (isPlaying) return;
 
+        const allCandidates = [...displayedItems, ...upcomingQueue];
         const itemsToFetch = allCandidates.filter(
             (item) =>
                 item.file_path &&
@@ -376,15 +383,18 @@ export function MultimediaTab({
                 } catch {
                     // Silently ignore extraction errors
                 }
+                // Yield to browser main thread between extractions
+                await new Promise((r) => setTimeout(r, 120));
             }
         };
 
-        generateThumbs();
+        const timer = setTimeout(generateThumbs, 300);
 
         return () => {
             isCancelled = true;
+            clearTimeout(timer);
         };
-    }, [displayedItems, upcomingQueue, activePlayingItem, isVideoFormat]);
+    }, [displayedItems, upcomingQueue, isVideoFormat, isPlaying]);
 
     useEffect(() => {
         const handleFs = async () => {
@@ -585,11 +595,9 @@ export function MultimediaTab({
                 return;
             }
             el.pause();
-            attachEqualizerToMedia(el);       // idempotent — runs once
             el.src = src;
             el.volume = isMuted ? 0 : volume;
             routeAudioDevice(selectedAudioDevice || "default", el);
-            el.load();
             el.play()
                 .then(() => {
                     if (requestId !== playRequestIdRef.current) return;
@@ -645,11 +653,9 @@ export function MultimediaTab({
         suppressEndedRef.current = true;
 
         el.pause();
-        attachEqualizerToMedia(el);
         el.src = src;
         el.volume = isMuted ? 0 : volume;
         routeAudioDevice(selectedAudioDevice || "default", el);
-        el.load();
         el.play()
             .then(() => {
                 suppressEndedRef.current = false;
@@ -846,9 +852,8 @@ export function MultimediaTab({
                             {activeItemIsVideo ? (
                                 <video
                                     ref={videoRef}
-                                    preload="auto"
+                                    preload="metadata"
                                     playsInline
-                                    crossOrigin="anonymous"
                                     poster={getItemThumbnail(activePlayingItem, "hqdefault") || undefined}
                                     onPlay={() => setIsPlaying(true)}
                                     onPause={() => setIsPlaying(false)}

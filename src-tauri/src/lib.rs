@@ -708,24 +708,33 @@ async fn get_video_thumbnail(
 
         let ffmpeg_path = get_ffmpeg_path(&app).ok_or("FFmpeg binary not found")?;
 
-        // Fast seek at 1 second
+        // Fast seek at 1 second with low priority & single thread
         let mut cmd = Command::new(&ffmpeg_path);
         cmd.args([
+            "-threads",
+            "1",
+            "-skip_frame",
+            "nokey",
             "-ss",
             "00:00:01",
             "-i",
             &p.to_string_lossy(),
-            "-vframes",
+            "-an",
+            "-sn",
+            "-dn",
+            "-frames:v",
+            "1",
+            "-update",
             "1",
             "-vf",
-            "scale=320:-1",
+            "scale=240:-1",
             "-q:v",
-            "3",
+            "4",
             "-y",
             &thumb_path.to_string_lossy(),
         ]);
         #[cfg(target_os = "windows")]
-        cmd.creation_flags(0x08000000);
+        cmd.creation_flags(0x08000000 | 0x00004000); // CREATE_NO_WINDOW | IDLE_PRIORITY_CLASS
 
         let output = cmd.output();
         let success = match output {
@@ -737,21 +746,30 @@ async fn get_video_thumbnail(
             // Fallback seek at 0 seconds (for very short clips)
             let mut cmd2 = Command::new(&ffmpeg_path);
             cmd2.args([
+                "-threads",
+                "1",
+                "-skip_frame",
+                "nokey",
                 "-ss",
                 "00:00:00",
                 "-i",
                 &p.to_string_lossy(),
-                "-vframes",
+                "-an",
+                "-sn",
+                "-dn",
+                "-frames:v",
+                "1",
+                "-update",
                 "1",
                 "-vf",
-                "scale=320:-1",
+                "scale=240:-1",
                 "-q:v",
-                "3",
+                "4",
                 "-y",
                 &thumb_path.to_string_lossy(),
             ]);
             #[cfg(target_os = "windows")]
-            cmd2.creation_flags(0x08000000);
+            cmd2.creation_flags(0x08000000 | 0x00004000);
             let _ = cmd2.output();
         }
 
