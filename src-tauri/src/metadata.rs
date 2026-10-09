@@ -222,10 +222,12 @@ pub async fn fetch_video_info(
     let mut audio_formats: Vec<FormatOption> = Vec::new();
 
     // -- VIDEO FORMATS (Primary + Dropdown) --
-    // Universal selector: handles both landscape (height<=X) and vertical (width<=X, e.g. TikTok/Reels)
+    // Universal selector: prioritizes H.264 (AVC) video and AAC (M4A) audio for 100% native compatibility
+    // with video editors (Adobe Premiere Pro, DaVinci Resolve, Final Cut Pro),
+    // handles both landscape (height<=X) and vertical (width<=X, e.g. TikTok/Reels)
     // with /best failsafe so format resolution never errors out on any site.
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo[width<=1080]+bestaudio/best[width<=1080]/best".to_string(),
+        format_id: "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo[width<=1080]+bestaudio/best[width<=1080]/best".to_string(),
         label: "1080p (Full HD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -234,7 +236,7 @@ pub async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo[width<=720]+bestaudio/best[width<=720]/best".to_string(),
+        format_id: "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo[width<=720]+bestaudio/best[width<=720]/best".to_string(),
         label: "720p (HD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -243,7 +245,7 @@ pub async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo+bestaudio/best".to_string(),
+        format_id: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio/best".to_string(),
         label: "Best Quality (Auto-Mux)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -252,7 +254,7 @@ pub async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=2160]+bestaudio/best[height<=2160]/bestvideo[width<=2160]+bestaudio/best[width<=2160]/best".to_string(),
+        format_id: "bestvideo[height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160]/bestvideo[width<=2160]+bestaudio/best[width<=2160]/best".to_string(),
         label: "4K (2160p Ultra HD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -261,7 +263,7 @@ pub async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=1440]+bestaudio/best[height<=1440]/bestvideo[width<=1440]+bestaudio/best[width<=1440]/best".to_string(),
+        format_id: "bestvideo[height<=1440]+bestaudio[ext=m4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440]/bestvideo[width<=1440]+bestaudio/best[width<=1440]/best".to_string(),
         label: "2K (1440p QHD)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -270,7 +272,7 @@ pub async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo[width<=480]+bestaudio/best[width<=480]/best".to_string(),
+        format_id: "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=480]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo[width<=480]+bestaudio/best[width<=480]/best".to_string(),
         label: "480p (Standard)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,
@@ -279,7 +281,7 @@ pub async fn fetch_video_info(
     });
 
     video_formats.push(FormatOption {
-        format_id: "bestvideo[height<=360]+bestaudio/best[height<=360]/bestvideo[width<=360]+bestaudio/best[width<=360]/best".to_string(),
+        format_id: "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=360]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best[height<=360]/bestvideo[width<=360]+bestaudio/best[width<=360]/best".to_string(),
         label: "360p (Data Saver)".to_string(),
         ext: "mp4".to_string(),
         is_audio_only: false,

@@ -586,10 +586,27 @@
 
 /* Fullscreen player edge-to-edge flush styling */
 :fullscreen,
-::backdrop {
-  margin: 0 !important;
-  padding: 0 !important;
+::backdrop,
+:fullscreen *,
+[data-fullscreen="true"],
+[data-fullscreen="true"] * {
+  margin: 0;
   border: 0 !important;
   outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+:fullscreen:focus,
+:fullscreen:focus-visible,
+:fullscreen *:focus,
+:fullscreen *:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+:fullscreen,
+::backdrop {
+  padding: 0 !important;
   background-color: #000000 !important;
 }

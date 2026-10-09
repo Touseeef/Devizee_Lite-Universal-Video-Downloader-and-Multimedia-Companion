@@ -107,7 +107,7 @@ export function WaveformVisualizer({
             if (mediaElement) {
                 return !mediaElement.paused && !mediaElement.ended;
             }
-            return true;
+            return isPlaying;
         };
 
         // If not playing or media is paused/ended, render resting state and do not loop

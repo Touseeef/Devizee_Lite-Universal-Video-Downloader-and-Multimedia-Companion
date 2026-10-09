@@ -109,6 +109,10 @@ export function SettingsTab({
     onOpenSupportedSites,
     selectedEqPreset = "flat",
     onSelectEqPreset,
+    isYouTubePlaying = false,
+    onEqAttemptWhenUnsupported,
+    zoomLevel = 100,
+    onZoomChange,
 }: {
     t: (key: TranslationKey) => string;
     settings: any;
@@ -132,12 +136,17 @@ export function SettingsTab({
             | "generalFolder"
             | "compressedFolder"
             | "programsFolder"
+            | "subtitlesFolder"
             | "tempFolder"
     ) => void;
     openFolder: (path?: string | null) => void;
     onOpenSupportedSites?: () => void;
     selectedEqPreset?: string;
     onSelectEqPreset?: (presetId: string) => void;
+    isYouTubePlaying?: boolean;
+    onEqAttemptWhenUnsupported?: () => void;
+    zoomLevel?: number;
+    onZoomChange?: (newZoom: number) => void;
 }) {
     const [activeSection, setActiveSection] = useState<SettingsTabId>("general");
     const [eqBands, setEqBands] = useState<number[]>([...currentEqGains]);
@@ -303,6 +312,9 @@ export function SettingsTab({
     const allPresets = [...EQ_PRESETS, ...customPresets];
 
     const applyEqPreset = (presetId: string) => {
+        if (isYouTubePlaying) {
+            onEqAttemptWhenUnsupported?.();
+        }
         const p = allPresets.find((x) => x.id === presetId);
         if (p) {
             setEqBands([...p.gains]);
@@ -331,6 +343,9 @@ export function SettingsTab({
     };
 
     const handleBandChange = (index: number, val: number) => {
+        if (isYouTubePlaying) {
+            onEqAttemptWhenUnsupported?.();
+        }
         const next = [...eqBands];
         next[index] = val;
         setEqBands(next);
@@ -393,6 +408,45 @@ export function SettingsTab({
                         </select>
                     </SettingRow>
 
+                    <SettingRow
+                        title="Interface Scaling & Zoom"
+                        desc="Adjust application display scale. Shortcut: Ctrl + / Ctrl - (Ctrl 0 to reset)"
+                    >
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onZoomChange?.(Math.max(75, (zoomLevel || 100) - 5))}
+                                disabled={(zoomLevel || 100) <= 75}
+                                className="w-8 h-8 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle flex items-center justify-center font-bold text-caption cursor-pointer disabled:opacity-40 transition-colors shadow-2xs"
+                                title="Zoom Out (Ctrl -)"
+                            >
+                                -
+                            </button>
+                            <span className="w-14 text-center font-mono font-bold text-caption text-primary px-2 py-1.5 rounded-lg bg-surface-2 border border-border-subtle shadow-2xs">
+                                {zoomLevel || 100}%
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => onZoomChange?.(Math.min(140, (zoomLevel || 100) + 5))}
+                                disabled={(zoomLevel || 100) >= 140}
+                                className="w-8 h-8 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle flex items-center justify-center font-bold text-caption cursor-pointer disabled:opacity-40 transition-colors shadow-2xs"
+                                title="Zoom In (Ctrl +)"
+                            >
+                                +
+                            </button>
+                            {(zoomLevel || 100) !== 100 && (
+                                <button
+                                    type="button"
+                                    onClick={() => onZoomChange?.(100)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border border-border-subtle text-[11px] font-semibold cursor-pointer transition-colors shadow-2xs ml-1"
+                                    title="Reset zoom to 100% (Ctrl 0)"
+                                >
+                                    Reset
+                                </button>
+                            )}
+                        </div>
+                    </SettingRow>
+
                     <SettingToggle
                         title={t("settings_autostart")}
                         desc={t("settings_autostart_desc")}
@@ -412,6 +466,13 @@ export function SettingsTab({
                         desc="Show confirmation when closing app with active downloading tasks"
                         checked={settings.warnOnCloseActiveDownloads !== false}
                         onChange={(v) => updateSetting("warnOnCloseActiveDownloads", v)}
+                    />
+
+                    <SettingToggle
+                        title="Developer Announcements & Feature Updates"
+                        desc="Anonymously checks public GitHub feed for releases, tips, and feature announcements. Zero telemetry or personal data is collected."
+                        checked={settings.enableAnnouncements !== false}
+                        onChange={(v) => updateSetting("enableAnnouncements", v)}
                     />
 
                     <SettingRow title="Devizee Application Updates" desc="Check for new signed desktop releases directly from GitHub">
@@ -550,6 +611,48 @@ export function SettingsTab({
                                     onClick={() => updateSetting("audioFolder", "")}
                                     className="px-2 py-1 rounded-md text-caption text-tertiary hover:text-status-danger cursor-pointer"
                                     title="Reset to default subfolder"
+                                >
+                                    Reset
+                                </button>
+                            )}
+                        </div>
+                    </SettingRow>
+
+                    <SettingRow
+                        title="Subtitles Destination Folder"
+                        desc="Directory where downloaded subtitle files (.srt, .vtt) are saved"
+                    >
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="text"
+                                readOnly
+                                placeholder={`${settings.saveFolder || "Downloads/Devizee"}/subtitles`}
+                                value={settings.subtitlesFolder || ""}
+                                className="settings-input"
+                                title={settings.subtitlesFolder || `${settings.saveFolder || "Downloads/Devizee"}/subtitles`}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => handleBrowseFolder("subtitlesFolder")}
+                                className="px-3 py-1 rounded-md bg-surface-2 hover:bg-surface-3 text-caption font-semibold border border-border-subtle cursor-pointer"
+                            >
+                                Browse...
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openFolder(settings.subtitlesFolder || (settings.saveFolder ? `${settings.saveFolder}/subtitles` : null))}
+                                className="px-2.5 py-1 rounded-md bg-surface-2 hover:bg-surface-3 text-caption text-secondary hover:text-primary border border-border-subtle cursor-pointer flex items-center gap-1"
+                                title="Open Subtitles Folder"
+                            >
+                                <ExternalLink size={12} />
+                                <span>Open</span>
+                            </button>
+                            {settings.subtitlesFolder && (
+                                <button
+                                    type="button"
+                                    onClick={() => updateSetting("subtitlesFolder", "")}
+                                    className="px-2 py-1 rounded-md text-caption text-tertiary hover:text-status-danger cursor-pointer"
+                                    title="Reset to default subtitles subfolder"
                                 >
                                     Reset
                                 </button>
@@ -900,6 +1003,13 @@ export function SettingsTab({
                                 </button>
                             </div>
                         </div>
+
+                        {isYouTubePlaying && (
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-2.5 text-amber-300 text-caption font-medium animate-in fade-in duration-200">
+                                <span className="text-base">⚠️</span>
+                                <span>Equalizer does not work with live YouTube video streams. Go for Audio Preview instead or Multimedia Hub.</span>
+                            </div>
+                        )}
 
                         {/* Presets Bar */}
                         <div className="flex flex-wrap items-center gap-2 pb-1">

@@ -1,12 +1,18 @@
 // src/components/media/MultimediaTab.tsx
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
+    ArrowLeftRight,
+    ArrowUp,
     ArrowUpDown,
+    Check,
     CheckSquare,
+    Download,
     ExternalLink,
     Film,
     Folder,
+    FolderOpen,
     FolderPlus,
+    Gauge,
     LayoutGrid,
     List,
     ListMusic,
@@ -74,6 +80,7 @@ export function MultimediaTab({
     onToggleMute,
     initialPlayRecord,
     onClearInitialPlayRecord,
+    onTheaterModeChange,
 }: {
     t: (key: TranslationKey) => string;
     history: DownloadRecord[];
@@ -93,6 +100,7 @@ export function MultimediaTab({
     onToggleMute: () => void;
     initialPlayRecord?: DownloadRecord | null;
     onClearInitialPlayRecord?: () => void;
+    onTheaterModeChange?: (isTheater: boolean) => void;
 }) {
     // Filters & view modes
     const [mediaFilter, setMediaFilter] = useState<"all" | "videos" | "audios">("all");
@@ -123,6 +131,29 @@ export function MultimediaTab({
     });
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
+    // Scroll to top visibility state
+    const [showScrollTop, setShowScrollTop] = useState(false);
+
+    useEffect(() => {
+        const mainEl = document.querySelector("main");
+        if (!mainEl) return;
+
+        const handleScroll = () => {
+            setShowScrollTop(mainEl.scrollTop > 150);
+        };
+
+        mainEl.addEventListener("scroll", handleScroll, { passive: true });
+        handleScroll();
+        return () => mainEl.removeEventListener("scroll", handleScroll);
+    }, []);
+
+    const scrollToTop = () => {
+        const mainEl = document.querySelector("main");
+        if (mainEl) {
+            mainEl.scrollTo({ top: 0, behavior: "smooth" });
+        }
+    };
+
     // In-App Player State
     const [activePlayingItem, setActivePlayingItem] = useState<DownloadRecord | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -136,6 +167,16 @@ export function MultimediaTab({
     const [showNetflixDrawer, setShowNetflixDrawer] = useState(false);
     const [customSubtitleUrl, setCustomSubtitleUrl] = useState<string | null>(null);
     const [customSubtitleName, setCustomSubtitleName] = useState<string | null>(null);
+    const [showSubtitleMenu, setShowSubtitleMenu] = useState<boolean>(false);
+
+    const handleClearSubtitles = () => {
+        if (customSubtitleUrl) {
+            try { URL.revokeObjectURL(customSubtitleUrl); } catch (_) { }
+        }
+        setCustomSubtitleUrl(null);
+        setCustomSubtitleName(null);
+        setShowSubtitleMenu(false);
+    };
 
     const handleAddSubtitleTrack = async (e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
@@ -165,11 +206,60 @@ export function MultimediaTab({
     const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(new Set());
     const [videoFitMode, setVideoFitMode] = useState<"contain" | "cover">("contain");
     const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+    const [isFullWidthVideo, setIsFullWidthVideo] = useState<boolean>(true);
 
     useEffect(() => {
         if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
         if (audioRef.current) audioRef.current.playbackRate = playbackSpeed;
     }, [playbackSpeed]);
+
+    // YouTube-style 2.5s idle auto-hide for cursor & overlay controls
+    const [isIdle, setIsIdle] = useState(false);
+    const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const resetIdleTimer = useCallback(() => {
+        setIsIdle(false);
+        if (idleTimerRef.current) {
+            clearTimeout(idleTimerRef.current);
+            idleTimerRef.current = null;
+        }
+        if (isPlaying && !showSubtitleMenu && !showNetflixDrawer) {
+            idleTimerRef.current = setTimeout(() => {
+                setIsIdle(true);
+            }, 2500);
+        }
+    }, [isPlaying, showSubtitleMenu, showNetflixDrawer]);
+
+    useEffect(() => {
+        if (!isPlaying || showSubtitleMenu || showNetflixDrawer) {
+            setIsIdle(false);
+            if (idleTimerRef.current) {
+                clearTimeout(idleTimerRef.current);
+                idleTimerRef.current = null;
+            }
+            return;
+        }
+
+        resetIdleTimer();
+
+        const handleActivity = () => {
+            resetIdleTimer();
+        };
+
+        window.addEventListener("mousemove", handleActivity);
+        window.addEventListener("keydown", handleActivity);
+        window.addEventListener("mousedown", handleActivity);
+
+        return () => {
+            if (idleTimerRef.current) {
+                clearTimeout(idleTimerRef.current);
+                idleTimerRef.current = null;
+            }
+            window.removeEventListener("mousemove", handleActivity);
+            window.removeEventListener("keydown", handleActivity);
+            window.removeEventListener("mousedown", handleActivity);
+        };
+    }, [isPlaying, showSubtitleMenu, showNetflixDrawer, resetIdleTimer]);
 
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -269,11 +359,15 @@ export function MultimediaTab({
         scanFolders(customFolders);
     }, [customFolders]);
 
-    // Filter completed multimedia items (merges SQLite history and local scanned items)
-    const allMediaItems = useMemo(() => {
-        const historyCompleted = history.filter(
+    const devizeeDownloadsItems = useMemo(() => {
+        return history.filter(
             (h) => h.status === "completed" && (isVideoFormat(h.format) || isAudioFormat(h.format))
         );
+    }, [history, isVideoFormat, isAudioFormat]);
+
+    // Filter completed multimedia items (merges SQLite history and local scanned items)
+    const allMediaItems = useMemo(() => {
+        const historyCompleted = devizeeDownloadsItems;
         const historyPaths = new Set(
             historyCompleted
                 .filter((h) => h.file_path)
@@ -283,17 +377,21 @@ export function MultimediaTab({
             (s) => !s.file_path || !historyPaths.has(s.file_path.replace(/\\/g, "/").toLowerCase())
         );
         return [...historyCompleted, ...dedupedScanned];
-    }, [history, scannedLocalItems, isVideoFormat, isAudioFormat]);
+    }, [devizeeDownloadsItems, scannedLocalItems]);
 
     const folderFilteredItems = useMemo(() => {
         if (!selectedFolder) return allMediaItems;
+        if (selectedFolder === "devizee_downloads") {
+            const devizeeIds = new Set(devizeeDownloadsItems.map((d) => d.id));
+            return allMediaItems.filter((m) => devizeeIds.has(m.id));
+        }
         const normalizedFolder = selectedFolder.replace(/\\/g, "/").toLowerCase();
         return allMediaItems.filter((m) => {
             if (!m.file_path) return false;
             const p = m.file_path.replace(/\\/g, "/").toLowerCase();
             return p.startsWith(normalizedFolder);
         });
-    }, [allMediaItems, selectedFolder]);
+    }, [allMediaItems, selectedFolder, devizeeDownloadsItems]);
 
     const videoCount = useMemo(() => {
         return folderFilteredItems.filter((m) => isVideoFormat(m.format)).length;
@@ -830,6 +928,15 @@ export function MultimediaTab({
     const activeItemIsVideo = activePlayingItem ? isVideoFormat(activePlayingItem.format) : false;
     const displayScrubTime = isScrubbing ? scrubValue : currentTime;
 
+    // Notify parent workspace when theater mode is active (media in full-width mode)
+    useEffect(() => {
+        const isTheater = !!(activePlayingItem && isFullWidthVideo);
+        onTheaterModeChange?.(isTheater);
+        return () => {
+            onTheaterModeChange?.(false);
+        };
+    }, [activePlayingItem, isFullWidthVideo, onTheaterModeChange]);
+
     return (
         <div className="max-w-5xl xl:max-w-6xl mx-auto space-y-6">
             {/* Hidden Single HTML Audio Element for Audio Playback */}
@@ -851,9 +958,11 @@ export function MultimediaTab({
 
             {/* ==================== 1. TOP HERO PLAYER (Image 3) ==================== */}
             {activePlayingItem && (
-                <div className="bg-surface-1 rounded-2xl p-4 md:p-5 border border-border-subtle shadow-sm relative overflow-hidden animate-in fade-in duration-fast">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-                        {/* LEFT: Compact Video / Art Box (~240px wide) */}
+                <div className="rounded-2xl p-4 md:p-5 border border-border-subtle bg-surface-1 shadow-sm relative overflow-hidden transition-all duration-300 animate-in fade-in duration-fast">
+                    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 ${
+                        isFullWidthVideo ? "items-start" : "items-center"
+                    }`}>
+                        {/* Video / Art Box (Full-width in Theater Mode, compact in standard) */}
                         <div
                             ref={mediaContainerRef}
                             onWheel={handleWheelVolume}
@@ -863,11 +972,16 @@ export function MultimediaTab({
                                 e.stopPropagation();
                                 toggleFullscreen();
                             }}
-                            className={
-                                isFullscreen
-                                    ? "fixed inset-0 w-full h-full z-50 rounded-none border-0 bg-black flex items-center justify-center overflow-hidden group select-none aspect-auto"
-                                    : "lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
-                            }
+                            className={`
+                                ${
+                                    isFullscreen
+                                        ? "fixed inset-0 w-full h-full z-50 rounded-none border-0 bg-black flex items-center justify-center overflow-hidden group select-none aspect-auto"
+                                        : isFullWidthVideo
+                                            ? "col-span-1 lg:col-span-12 w-full aspect-video max-h-[70vh] rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs group"
+                                            : "lg:col-span-3 aspect-video rounded-xl overflow-hidden bg-black relative flex items-center justify-center border border-border-subtle shadow-xs shrink-0 group"
+                                }
+                                ${isIdle && isPlaying ? "cursor-none" : ""}
+                            `}
                         >
                             <video
                                 ref={videoRef}
@@ -895,7 +1009,7 @@ export function MultimediaTab({
                                     }
                                 }}
                                 onEnded={handleMediaEnded}
-                                className={`w-full h-full cursor-pointer transition-all duration-200 ${
+                                className={`w-full h-full ${isIdle && isPlaying ? "cursor-none" : "cursor-pointer"} transition-all duration-200 ${
                                     !activeItemIsVideo ? "hidden" : videoFitMode === "cover" ? "object-cover" : "object-contain"
                                 }`}
                                 onClick={togglePlayPause}
@@ -913,14 +1027,31 @@ export function MultimediaTab({
 
                             {!activeItemIsVideo && (
                                 getItemThumbnail(activePlayingItem, "hqdefault") ? (
-                                    <img
-                                        src={getItemThumbnail(activePlayingItem, "hqdefault")!}
-                                        alt=""
-                                        className="w-full h-full object-cover"
-                                    />
+                                    isFullWidthVideo ? (
+                                        <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-black select-none">
+                                            {/* Ambient blurred backdrop */}
+                                            <img
+                                                src={getItemThumbnail(activePlayingItem, "hqdefault")!}
+                                                alt=""
+                                                className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-110 pointer-events-none"
+                                            />
+                                            {/* Crisp centered cover art */}
+                                            <img
+                                                src={getItemThumbnail(activePlayingItem, "hqdefault")!}
+                                                alt={activePlayingItem.title}
+                                                className="relative z-10 max-h-[85%] max-w-[85%] aspect-square object-cover rounded-xl shadow-2xl border border-white/15"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <img
+                                            src={getItemThumbnail(activePlayingItem, "hqdefault")!}
+                                            alt=""
+                                            className="w-full h-full object-cover"
+                                        />
+                                    )
                                 ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center bg-surface-2 text-accent">
-                                        <Music size={28} />
+                                    <div className="w-full h-full flex flex-col items-center justify-center bg-surface-2 text-accent select-none">
+                                        <Music size={isFullWidthVideo ? 48 : 28} />
                                         <span className="text-[10px] font-mono text-tertiary mt-1">
                                             {formatDisplayBadge(activePlayingItem.format)}
                                         </span>
@@ -961,42 +1092,160 @@ export function MultimediaTab({
                                 </button>
                             )}
 
-                            {/* Subtitles Overlay Button */}
-                            {activeItemIsVideo && !videoError && (
-                                <button
-                                    type="button"
-                                    onClick={handleAddSubtitleTrack}
-                                    className={`absolute top-2.5 right-12 w-8 h-8 rounded-lg ${customSubtitleUrl ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"} hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-md`}
-                                    title={customSubtitleName ? `Subtitle: ${customSubtitleName}` : "Add Subtitles (.srt, .vtt)"}
-                                >
-                                    <Subtitles size={15} />
-                                </button>
-                            )}
+                            {/* Bottom-Right Control Buttons Overlay (Hidden in Fullscreen to prevent duplicate controls behind main bar) */}
+                            {!isFullscreen && (
+                                <div className={`absolute bottom-3 right-3 flex items-center gap-1.5 z-30 transition-opacity duration-300 ${
+                                    isIdle && isPlaying ? "opacity-0 pointer-events-none" : "opacity-0 group-hover:opacity-100"
+                                }`}>
+                                    {/* Subtitles Overlay Button & Menu */}
+                                    {activeItemIsVideo && !videoError && (
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowSubtitleMenu(!showSubtitleMenu);
+                                                }}
+                                                className={`w-8 h-8 rounded-lg ${
+                                                    customSubtitleUrl ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"
+                                                } hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-md`}
+                                                title={customSubtitleName ? `Subtitle active: ${customSubtitleName} (Click to manage or disable)` : "Subtitles (Click to load or manage)"}
+                                            >
+                                                <Subtitles size={15} />
+                                            </button>
 
-                            {/* Aspect Ratio Toggle (Fit / Fill) in Fullscreen */}
-                            {isFullscreen && activeItemIsVideo && !videoError && (
-                                <button
-                                    type="button"
-                                    onClick={() => setVideoFitMode(videoFitMode === "contain" ? "cover" : "contain")}
-                                    className={`absolute top-2.5 right-22 w-8 h-8 rounded-lg ${
-                                        videoFitMode === "cover" ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"
-                                    } hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-md`}
-                                    title={videoFitMode === "cover" ? "Aspect: Fill Screen (Click for Fit/Letterbox)" : "Aspect: Fit Screen (Click to Fill & remove black bars)"}
-                                >
-                                    <Scaling size={15} />
-                                </button>
-                            )}
+                                            {showSubtitleMenu && (
+                                                <div
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="absolute bottom-10 right-0 z-50 w-64 bg-surface-1/95 backdrop-blur-xl border border-border-subtle rounded-xl p-2.5 shadow-2xl animate-in fade-in duration-fast text-left"
+                                                >
+                                                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-border-subtle text-caption font-bold text-primary">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <Subtitles size={13} className="text-accent" />
+                                                            <span>Subtitles</span>
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowSubtitleMenu(false)}
+                                                            className="text-tertiary hover:text-primary p-0.5 rounded cursor-pointer"
+                                                        >
+                                                            <X size={13} />
+                                                        </button>
+                                                    </div>
 
-                            {/* Fullscreen Trigger Overlay for Video */}
-                            {activeItemIsVideo && !videoError && (
-                                <button
-                                    type="button"
-                                    onClick={toggleFullscreen}
-                                    className="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg bg-black/60 hover:bg-black/85 hover:scale-105 active:scale-95 text-white/90 hover:text-white backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 z-30 cursor-pointer shadow-md"
-                                    title={isFullscreen ? "Exit Fullscreen (Esc or Double-Click)" : "Fullscreen Video"}
-                                >
-                                    {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-                                </button>
+                                                    {customSubtitleUrl ? (
+                                                        <div className="space-y-1.5">
+                                                            <div className="px-2 py-1.5 rounded-lg bg-surface-2 text-[11px] text-accent font-semibold flex items-center gap-1.5">
+                                                                <Check size={13} className="shrink-0" />
+                                                                <span className="truncate" title={customSubtitleName || ""}>{customSubtitleName}</span>
+                                                            </div>
+
+                                                            {/* Disable / Turn off subtitles button */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleClearSubtitles}
+                                                                className="w-full px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-status-danger-subtle text-secondary hover:text-status-danger text-caption font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                                                            >
+                                                                <X size={13} />
+                                                                <span>Disable / Remove Subtitles</span>
+                                                            </button>
+
+                                                            {/* Replace subtitle file button */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    setShowSubtitleMenu(false);
+                                                                    handleAddSubtitleTrack(e);
+                                                                }}
+                                                                className="w-full px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary text-caption font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                                                            >
+                                                                <FolderOpen size={13} />
+                                                                <span>Change Subtitle File...</span>
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-1.5">
+                                                            <div className="px-2 py-1 rounded bg-surface-2 text-[11px] text-tertiary font-medium flex items-center gap-1.5">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                                                                <span>No Subtitle Track Active</span>
+                                                            </div>
+
+                                                            {/* Load Subtitle button */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    setShowSubtitleMenu(false);
+                                                                    handleAddSubtitleTrack(e);
+                                                                }}
+                                                                className="w-full px-2.5 py-1.5 rounded-lg bg-accent text-white hover:bg-accent-hover text-caption font-semibold flex items-center gap-2 transition-colors cursor-pointer shadow-xs"
+                                                            >
+                                                                <FolderOpen size={13} />
+                                                                <span>Select Subtitle File (.srt, .vtt)</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Open Subtitles Download Folder */}
+                                                    <div className="pt-2 mt-2 border-t border-border-subtle">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setShowSubtitleMenu(false);
+                                                                const dir = activePlayingItem?.file_path ? activePlayingItem.file_path.replace(/[\\/][^\\/]+$/, "") + "/subtitles" : null;
+                                                                openFolder(dir);
+                                                            }}
+                                                            className="w-full px-2 py-1 text-[11px] text-tertiary hover:text-accent font-medium flex items-center justify-between transition-colors cursor-pointer"
+                                                            title="Open subtitles folder on disk"
+                                                        >
+                                                            <span>Open Subtitles Folder</span>
+                                                            <ExternalLink size={11} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Aspect Ratio Toggle (Fit / Fill) */}
+                                    {activeItemIsVideo && !videoError && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setVideoFitMode(videoFitMode === "contain" ? "cover" : "contain")}
+                                            className={`w-8 h-8 rounded-lg ${
+                                                videoFitMode === "cover" ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"
+                                            } hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-md`}
+                                            title={videoFitMode === "cover" ? "Aspect: Fill Screen (Click for Fit/Letterbox)" : "Aspect: Fit Screen (Click to Fill & remove black bars)"}
+                                        >
+                                            <Scaling size={15} />
+                                        </button>
+                                    )}
+
+                                    {/* Full-Width / Theater View Toggle */}
+                                    {!videoError && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsFullWidthVideo(!isFullWidthVideo)}
+                                            className={`w-8 h-8 rounded-lg ${
+                                                isFullWidthVideo ? "bg-accent text-white" : "bg-black/60 hover:bg-black/85 text-white/90"
+                                            } hover:scale-105 active:scale-95 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-md`}
+                                            title={isFullWidthVideo ? "Theater Mode Active (Click for Standard View)" : "Switch to Full-Width Theater Mode"}
+                                        >
+                                            <ArrowLeftRight size={15} />
+                                        </button>
+                                    )}
+
+                                    {/* Fullscreen Trigger Overlay for Video */}
+                                    {activeItemIsVideo && !videoError && (
+                                        <button
+                                            type="button"
+                                            onClick={toggleFullscreen}
+                                            className="w-8 h-8 rounded-lg bg-black/60 hover:bg-black/85 hover:scale-105 active:scale-95 text-white/90 hover:text-white backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-200 cursor-pointer shadow-md"
+                                            title="Fullscreen Video"
+                                        >
+                                            <Maximize2 size={15} />
+                                        </button>
+                                    )}
+                                </div>
                             )}
 
                             {/* Right-Side Upcoming Queue Drawer in Fullscreen */}
@@ -1075,9 +1324,11 @@ export function MultimediaTab({
                                 </div>
                             )}
 
-                            {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover) */}
+                            {/* Fullscreen Bottom Transport Controls Bar (Auto-Shows on Hover, Auto-Hides when Idle) */}
                             {isFullscreen && (
-                                <div className="absolute bottom-0 inset-x-0 z-40 px-6 pt-2.5 pb-2 bg-gradient-to-t from-black/95 via-black/75 to-transparent flex flex-col gap-1.5 transition-opacity duration-300 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                                <div className={`absolute bottom-0 inset-x-0 z-40 px-6 pt-2.5 pb-2 bg-gradient-to-t from-black/95 via-black/75 to-transparent flex flex-col gap-1.5 transition-opacity duration-300 ${
+                                    isIdle && isPlaying ? "opacity-0 pointer-events-none" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                                }`}>
                                     {/* Fullscreen Scrubber */}
                                     <div className="flex items-center gap-3 w-full">
                                         <span className="text-[11px] font-mono text-white/70 w-12 text-left">
@@ -1251,8 +1502,8 @@ export function MultimediaTab({
                             )}
                         </div>
 
-                        {/* CENTER: Metadata, Waveform, Transport & Scrubber */}
-                        <div className="lg:col-span-6 flex flex-col justify-between space-y-3 min-w-0 pr-0 lg:pr-2">
+                        {/* CENTER / ROW 2 LEFT: Metadata, Waveform, Transport & Scrubber */}
+                        <div className={`${isFullWidthVideo ? "lg:col-span-8" : "lg:col-span-6"} flex flex-col justify-between space-y-3 min-w-0 pr-0 lg:pr-2`}>
                             {/* Top Badge & Waveform */}
                             <div className="flex items-center gap-3">
                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-accent-subtle text-accent text-[11px] font-bold shrink-0">
@@ -1278,150 +1529,304 @@ export function MultimediaTab({
                                 </p>
                             </div>
 
-                            {/* Transport Controls Row with Volume Slider */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 py-1">
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsShuffle(!isShuffle)}
-                                        className={`p-2 rounded-lg transition-colors cursor-pointer ${isShuffle ? "text-accent font-bold bg-accent-subtle" : "text-tertiary hover:text-primary"
-                                            }`}
-                                        title={isShuffle ? "Shuffle On" : "Shuffle Off"}
-                                    >
-                                        <Shuffle size={15} />
-                                    </button>
+                            {isFullWidthVideo ? (
+                                /* THEATER MODE LAYOUT: Scrubber on Top, 3-Column Controls Below (Speed Left, Centered Playback, Volume Right) */
+                                <div className="space-y-2 pt-1">
+                                    {/* 1. Scrubber & Time (Top) */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between text-[11px] font-mono text-tertiary">
+                                            <span>{formatSeconds(displayScrubTime)}</span>
+                                            <span>{formatSeconds(duration || 0)}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max={duration || 100}
+                                            step="0.5"
+                                            value={displayScrubTime}
+                                            onPointerDown={() => {
+                                                setIsScrubbing(true);
+                                                setScrubValue(currentTime);
+                                            }}
+                                            onChange={(e) => {
+                                                setScrubValue(parseFloat(e.target.value));
+                                            }}
+                                            onPointerUp={(e) => {
+                                                setIsScrubbing(false);
+                                                handleSeek(parseFloat((e.target as HTMLInputElement).value));
+                                            }}
+                                            className="w-full h-1.5 rounded-full cursor-pointer accent-accent bg-surface-2 transition-all"
+                                        />
+                                    </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={handlePrev}
-                                        className="p-2 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer"
-                                        title="Previous Track"
-                                    >
-                                        <SkipBack size={18} />
-                                    </button>
+                                    {/* 2. Controls Row Below Progress Bar: Speed on Left, Centered Controls, Volume on Right */}
+                                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                                        {/* Left: Playback Speed with Speed Gauge Icon */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const speeds = [1, 1.25, 1.5, 2, 0.75];
+                                                const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
+                                                setPlaybackSpeed(speeds[nextIdx]);
+                                            }}
+                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
+                                            title="Change Playback Speed"
+                                        >
+                                            <Gauge size={13} className="text-secondary" />
+                                            <span>{playbackSpeed}x</span>
+                                        </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSeek(Math.max(0, currentTime - 10))}
-                                        className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
-                                        title="Skip Back 10s"
-                                    >
-                                        <RotateCcw size={16} />
-                                    </button>
+                                        {/* Center: Playback Controls */}
+                                        <div className="flex items-center gap-2.5 sm:gap-3 mx-auto">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsShuffle(!isShuffle)}
+                                                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                                                    isShuffle ? "text-accent font-bold bg-accent-subtle" : "text-tertiary hover:text-primary"
+                                                }`}
+                                                title={isShuffle ? "Shuffle On" : "Shuffle Off"}
+                                            >
+                                                <Shuffle size={15} />
+                                            </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={togglePlayPause}
-                                        className="w-12 h-12 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                                        title={isPlaying ? "Pause" : "Play"}
-                                    >
-                                        {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
-                                    </button>
+                                            <button
+                                                type="button"
+                                                onClick={handlePrev}
+                                                className="p-2 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer"
+                                                title="Previous Track"
+                                            >
+                                                <SkipBack size={18} />
+                                            </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSeek(Math.min(duration || Infinity, currentTime + 10))}
-                                        className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
-                                        title="Skip Forward 10s"
-                                    >
-                                        <RotateCw size={16} />
-                                    </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSeek(Math.max(0, currentTime - 10))}
+                                                className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                                title="Skip Back 10s"
+                                            >
+                                                <RotateCcw size={16} />
+                                            </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={handleNext}
-                                        className="p-2 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer"
-                                        title="Next Track"
-                                    >
-                                        <SkipForward size={18} />
-                                    </button>
+                                            <button
+                                                type="button"
+                                                onClick={togglePlayPause}
+                                                className="w-12 h-12 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                                                title={isPlaying ? "Pause" : "Play"}
+                                            >
+                                                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                                            </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setRepeatMode(repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off");
-                                        }}
-                                        className={`p-2 rounded-lg transition-colors cursor-pointer ${repeatMode !== "off" ? "text-accent font-bold bg-accent-subtle" : "text-tertiary hover:text-primary"
-                                            }`}
-                                        title={`Repeat: ${repeatMode}`}
-                                    >
-                                        {repeatMode === "one" ? <Repeat1 size={15} /> : <Repeat size={15} />}
-                                    </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSeek(Math.min(duration || Infinity, currentTime + 10))}
+                                                className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                                title="Skip Forward 10s"
+                                            >
+                                                <RotateCw size={16} />
+                                            </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const speeds = [1, 1.25, 1.5, 2, 0.75];
-                                            const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
-                                            setPlaybackSpeed(speeds[nextIdx]);
-                                        }}
-                                        className="px-2 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
-                                        title="Change Playback Speed"
-                                    >
-                                        {playbackSpeed}x
-                                    </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleNext}
+                                                className="p-2 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer"
+                                                title="Next Track"
+                                            >
+                                                <SkipForward size={18} />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setRepeatMode(repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off");
+                                                }}
+                                                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                                                    repeatMode !== "off" ? "text-accent font-bold bg-accent-subtle" : "text-tertiary hover:text-primary"
+                                                }`}
+                                                title={`Repeat: ${repeatMode}`}
+                                            >
+                                                {repeatMode === "one" ? <Repeat1 size={15} /> : <Repeat size={15} />}
+                                            </button>
+                                        </div>
+
+                                        {/* Right: Volume Slider */}
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-border-subtle shadow-2xs">
+                                            <button
+                                                type="button"
+                                                onClick={toggleMute}
+                                                className="text-secondary hover:text-primary transition-colors cursor-pointer"
+                                                title={isMuted ? "Unmute" : "Mute"}
+                                            >
+                                                {isMuted || volume === 0 ? (
+                                                    <VolumeX size={14} className="text-status-danger" />
+                                                ) : (
+                                                    <Volume2 size={14} className="text-accent" />
+                                                )}
+                                            </button>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="1"
+                                                step="0.05"
+                                                value={isMuted ? 0 : volume}
+                                                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                                                className="w-16 sm:w-20 h-1.5 accent-accent cursor-pointer rounded-lg"
+                                                title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                                            />
+                                            <span className="text-[10px] font-mono text-tertiary w-6 text-right">
+                                                {Math.round((isMuted ? 0 : volume) * 100)}%
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
+                            ) : (
+                                /* STANDARD / AUDIO COMPACT LAYOUT */
+                                <>
+                                    {/* Transport Controls Row with Volume Slider */}
+                                    <div className="flex flex-wrap items-center justify-between gap-3 py-1">
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsShuffle(!isShuffle)}
+                                                className={`p-2 rounded-lg transition-colors cursor-pointer ${isShuffle ? "text-accent font-bold bg-accent-subtle" : "text-tertiary hover:text-primary"
+                                                    }`}
+                                                title={isShuffle ? "Shuffle On" : "Shuffle Off"}
+                                            >
+                                                <Shuffle size={15} />
+                                            </button>
 
-                                {/* Persistent Media Volume Slider */}
-                                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-border-subtle shadow-2xs">
-                                    <button
-                                        type="button"
-                                        onClick={toggleMute}
-                                        className="text-secondary hover:text-primary transition-colors cursor-pointer"
-                                        title={isMuted ? "Unmute" : "Mute"}
-                                    >
-                                        {isMuted || volume === 0 ? (
-                                            <VolumeX size={14} className="text-status-danger" />
-                                        ) : (
-                                            <Volume2 size={14} className="text-accent" />
-                                        )}
-                                    </button>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.05"
-                                        value={isMuted ? 0 : volume}
-                                        onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                                        className="w-16 sm:w-20 h-1.5 accent-accent cursor-pointer rounded-lg"
-                                        title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
-                                    />
-                                    <span className="text-[10px] font-mono text-tertiary w-6 text-right">
-                                        {Math.round((isMuted ? 0 : volume) * 100)}%
-                                    </span>
-                                </div>
-                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={handlePrev}
+                                                className="p-2 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer"
+                                                title="Previous Track"
+                                            >
+                                                <SkipBack size={18} />
+                                            </button>
 
-                            {/* Scrubber & Time */}
-                            <div className="space-y-1">
-                                <div className="flex items-center justify-between text-[11px] font-mono text-tertiary">
-                                    <span>{formatSeconds(displayScrubTime)}</span>
-                                    <span>{formatSeconds(duration || 0)}</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max={duration || 100}
-                                    step="0.5"
-                                    value={displayScrubTime}
-                                    onPointerDown={() => {
-                                        setIsScrubbing(true);
-                                        setScrubValue(currentTime);
-                                    }}
-                                    onChange={(e) => {
-                                        setScrubValue(parseFloat(e.target.value));
-                                    }}
-                                    onPointerUp={(e) => {
-                                        setIsScrubbing(false);
-                                        handleSeek(parseFloat((e.target as HTMLInputElement).value));
-                                    }}
-                                    className="w-full h-1.5 rounded-full cursor-pointer accent-accent bg-surface-2 transition-all"
-                                />
-                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSeek(Math.max(0, currentTime - 10))}
+                                                className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                                title="Skip Back 10s"
+                                            >
+                                                <RotateCcw size={16} />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={togglePlayPause}
+                                                className="w-12 h-12 rounded-full bg-accent hover:bg-accent-hover text-white flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                                                title={isPlaying ? "Pause" : "Play"}
+                                            >
+                                                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSeek(Math.min(duration || Infinity, currentTime + 10))}
+                                                className="p-1.5 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                                title="Skip Forward 10s"
+                                            >
+                                                <RotateCw size={16} />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleNext}
+                                                className="p-2 text-secondary hover:text-primary hover:bg-surface-2 rounded-lg transition-all cursor-pointer"
+                                                title="Next Track"
+                                            >
+                                                <SkipForward size={18} />
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setRepeatMode(repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off");
+                                                }}
+                                                className={`p-2 rounded-lg transition-colors cursor-pointer ${repeatMode !== "off" ? "text-accent font-bold bg-accent-subtle" : "text-tertiary hover:text-primary"
+                                                    }`}
+                                                title={`Repeat: ${repeatMode}`}
+                                            >
+                                                {repeatMode === "one" ? <Repeat1 size={15} /> : <Repeat size={15} />}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const speeds = [1, 1.25, 1.5, 2, 0.75];
+                                                    const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
+                                                    setPlaybackSpeed(speeds[nextIdx]);
+                                                }}
+                                                className="px-2 py-1 rounded-lg bg-surface-2 hover:bg-surface-3 border border-border-subtle text-primary text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
+                                                title="Change Playback Speed"
+                                            >
+                                                {playbackSpeed}x
+                                            </button>
+                                        </div>
+
+                                        {/* Persistent Media Volume Slider */}
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-border-subtle shadow-2xs">
+                                            <button
+                                                type="button"
+                                                onClick={toggleMute}
+                                                className="text-secondary hover:text-primary transition-colors cursor-pointer"
+                                                title={isMuted ? "Unmute" : "Mute"}
+                                            >
+                                                {isMuted || volume === 0 ? (
+                                                    <VolumeX size={14} className="text-status-danger" />
+                                                ) : (
+                                                    <Volume2 size={14} className="text-accent" />
+                                                )}
+                                            </button>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="1"
+                                                step="0.05"
+                                                value={isMuted ? 0 : volume}
+                                                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                                                className="w-16 sm:w-20 h-1.5 accent-accent cursor-pointer rounded-lg"
+                                                title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                                            />
+                                            <span className="text-[10px] font-mono text-tertiary w-6 text-right">
+                                                {Math.round((isMuted ? 0 : volume) * 100)}%
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Scrubber & Time */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between text-[11px] font-mono text-tertiary">
+                                            <span>{formatSeconds(displayScrubTime)}</span>
+                                            <span>{formatSeconds(duration || 0)}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max={duration || 100}
+                                            step="0.5"
+                                            value={displayScrubTime}
+                                            onPointerDown={() => {
+                                                setIsScrubbing(true);
+                                                setScrubValue(currentTime);
+                                            }}
+                                            onChange={(e) => {
+                                                setScrubValue(parseFloat(e.target.value));
+                                            }}
+                                            onPointerUp={(e) => {
+                                                setIsScrubbing(false);
+                                                handleSeek(parseFloat((e.target as HTMLInputElement).value));
+                                            }}
+                                            className="w-full h-1.5 rounded-full cursor-pointer accent-accent bg-surface-2 transition-all"
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
 
-                        {/* RIGHT: In-Hero Queue Panel */}
-                        <div className="lg:col-span-3 border-t lg:border-t-0 lg:border-l border-border-subtle pt-3 lg:pt-0 lg:pl-4 space-y-2">
+                        {/* RIGHT / ROW 2 RIGHT: In-Hero Queue Panel */}
+                        <div className={`${isFullWidthVideo ? "lg:col-span-4" : "lg:col-span-3"} border-t lg:border-t-0 lg:border-l border-border-subtle pt-3 lg:pt-0 lg:pl-4 space-y-2`}>
                             {/* Non-overlapping Queue Header with Integrated Close Button */}
                             <div className="flex items-center justify-between pb-1 border-b border-border-subtle/50">
                                 <div className="flex items-center gap-1.5">
@@ -1450,7 +1855,7 @@ export function MultimediaTab({
                                 </div>
                             </div>
 
-                            <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                            <div className={`${isFullWidthVideo ? "max-h-48" : "max-h-36"} overflow-y-auto space-y-1.5 pr-1`}>
                                 {upcomingQueue.length === 0 ? (
                                     <div className="py-6 text-center text-[11px] text-tertiary">
                                         Queue is empty
@@ -1511,9 +1916,13 @@ export function MultimediaTab({
                 </div>
             )}
 
-            {/* Custom Folders Library Bar */}
-            {customFolders.length > 0 && (
-                <div className="bg-surface-1 p-3 rounded-xl border border-border-subtle shadow-2xs space-y-2">
+            {/* ==================== 2. CONTROL BAR (Media Folders + Filters + Controls) & MEDIA LIST ==================== */}
+            <div className={`space-y-6 transition-opacity duration-300 ${
+                activePlayingItem && isFullWidthVideo ? "opacity-20 hover:opacity-100 focus-within:opacity-100" : ""
+            }`}>
+                <div className="bg-surface-1 p-3 rounded-xl border border-border-subtle shadow-2xs space-y-3">
+                {/* Media Folders Top Row */}
+                <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <span className="text-caption font-bold text-secondary flex items-center gap-1.5">
                             <Folder size={14} className="text-accent" />
@@ -1525,11 +1934,12 @@ export function MultimediaTab({
                                 onClick={() => setSelectedFolder(null)}
                                 className="text-[11px] font-semibold text-accent hover:underline cursor-pointer"
                             >
-                                Reset to All Media
+                                Reset to All Folders
                             </button>
                         )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        {/* 1st: All Folders */}
                         <button
                             type="button"
                             onClick={() => setSelectedFolder(null)}
@@ -1541,6 +1951,25 @@ export function MultimediaTab({
                         >
                             All Folders ({allMediaItems.length})
                         </button>
+
+                        {/* 2nd Permanent Option: Devizee Downloads */}
+                        <button
+                            type="button"
+                            onClick={() => setSelectedFolder(selectedFolder === "devizee_downloads" ? null : "devizee_downloads")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-semibold transition-all cursor-pointer border ${
+                                selectedFolder === "devizee_downloads"
+                                    ? "bg-accent text-white border-accent shadow-xs"
+                                    : "bg-surface-2 text-secondary hover:text-primary hover:bg-surface-3 border-border-subtle"
+                            }`}
+                        >
+                            <Download size={13} className={selectedFolder === "devizee_downloads" ? "text-white" : "text-accent"} />
+                            <span>Devizee Downloads</span>
+                            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${selectedFolder === "devizee_downloads" ? "bg-white/20 text-white" : "bg-surface-3 text-tertiary"}`}>
+                                {devizeeDownloadsItems.length}
+                            </span>
+                        </button>
+
+                        {/* 3rd and so on: Custom Folders */}
                         {customFolders.map((folderPath) => {
                             const folderName = folderPath.split(/[\\/]/).filter(Boolean).pop() || folderPath;
                             const count = allMediaItems.filter((m) => {
@@ -1580,10 +2009,12 @@ export function MultimediaTab({
                         })}
                     </div>
                 </div>
-            )}
 
-            {/* ==================== 2. CONTROL BAR (Filter Tabs, Search, Add Folder, View Mode) ==================== */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-surface-1 p-3 rounded-xl border border-border-subtle shadow-2xs">
+                {/* Divider Line Between Folders and Filters */}
+                <div className="border-t border-border-subtle/60" />
+
+                {/* Filter Tabs, Search, Add Folder, View Mode & Sort Controls */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 {/* Left: Filter Tabs */}
                 <div className="flex items-center gap-1.5">
                     <button
@@ -1697,6 +2128,7 @@ export function MultimediaTab({
                         </button>
                     </div>
                 </div>
+            </div>
             </div>
 
             {/* ==================== 3. MULTI-SELECT TOOLBAR ==================== */}
@@ -1979,6 +2411,19 @@ export function MultimediaTab({
                         );
                     })}
                 </div>
+            )}
+            </div>
+
+            {/* Floating Scroll-to-Top Button */}
+            {showScrollTop && (
+                <button
+                    type="button"
+                    onClick={scrollToTop}
+                    className="fixed bottom-6 right-6 z-40 p-3 rounded-full bg-accent hover:bg-accent-hover text-white shadow-floating transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer animate-in fade-in zoom-in-75"
+                    title="Scroll to Top"
+                >
+                    <ArrowUp size={18} strokeWidth={2.5} />
+                </button>
             )}
         </div>
     );

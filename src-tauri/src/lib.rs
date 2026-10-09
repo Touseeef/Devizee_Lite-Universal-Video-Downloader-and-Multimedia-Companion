@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
@@ -92,6 +92,97 @@ pub(crate) fn run_command_with_timeout(
 #[tauri::command]
 fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+/// Dynamically updates system tray icon indicators (download progress bar / green dot, yellow error dot) and tooltip
+#[tauri::command]
+fn update_tray_status(
+    app: tauri::AppHandle,
+    active_count: usize,
+    percent: f32,
+    has_error: bool,
+) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let tooltip = if has_error {
+            format!("Devizee Lite - ⚠️ Download issue requires attention")
+        } else if active_count > 0 {
+            format!("Devizee Lite - Downloading: {:.0}% ({} active)", percent, active_count)
+        } else {
+            "Devizee Lite - Universal Video Downloader".to_string()
+        };
+        let _ = tray.set_tooltip(Some(tooltip));
+
+        if let Some(base_icon) = app.default_window_icon() {
+            let width = base_icon.width();
+            let height = base_icon.height();
+            let mut rgba = base_icon.rgba().to_vec();
+
+            if has_error {
+                // Draw yellow / amber warning dot in top-right corner
+                let dot_radius = (width / 7).max(3) as i32;
+                let center_x = (width - dot_radius as u32 - 2) as i32;
+                let center_y = (dot_radius as u32 + 2) as i32;
+                for y in (center_y - dot_radius)..=(center_y + dot_radius) {
+                    for x in (center_x - dot_radius)..=(center_x + dot_radius) {
+                        if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
+                            let dist_sq = (x - center_x) * (x - center_x) + (y - center_y) * (y - center_y);
+                            if dist_sq <= dot_radius * dot_radius {
+                                let idx = ((y as u32 * width + x as u32) * 4) as usize;
+                                if idx + 3 < rgba.len() {
+                                    rgba[idx] = 245;     // R (Amber yellow)
+                                    rgba[idx + 1] = 158; // G
+                                    rgba[idx + 2] = 11;  // B
+                                    rgba[idx + 3] = 255; // A
+                                }
+                            }
+                        }
+                    }
+                }
+                let icon = tauri::image::Image::new_owned(rgba, width, height);
+                let _ = tray.set_icon(Some(icon));
+            } else if active_count > 0 {
+                // Draw download indicator (green dot in top-right + progress bar at bottom)
+                let dot_radius = (width / 7).max(3) as i32;
+                let center_x = (width - dot_radius as u32 - 2) as i32;
+                let center_y = (dot_radius as u32 + 2) as i32;
+                for y in (center_y - dot_radius)..=(center_y + dot_radius) {
+                    for x in (center_x - dot_radius)..=(center_x + dot_radius) {
+                        if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
+                            let dist_sq = (x - center_x) * (x - center_x) + (y - center_y) * (y - center_y);
+                            if dist_sq <= dot_radius * dot_radius {
+                                let idx = ((y as u32 * width + x as u32) * 4) as usize;
+                                if idx + 3 < rgba.len() {
+                                    rgba[idx] = 16;      // R (Green)
+                                    rgba[idx + 1] = 185; // G
+                                    rgba[idx + 2] = 129; // B
+                                    rgba[idx + 3] = 255; // A
+                                }
+                            }
+                        }
+                    }
+                }
+                // Progress bar on bottom edge of the icon
+                let bar_h = (height / 16).max(2);
+                let progress_w = ((width as f32 * (percent / 100.0).clamp(0.05, 1.0)) as u32).min(width);
+                for y in (height - bar_h)..height {
+                    for x in 0..progress_w {
+                        let idx = ((y * width + x) * 4) as usize;
+                        if idx + 3 < rgba.len() {
+                            rgba[idx] = 20;      // Teal / Cyan
+                            rgba[idx + 1] = 184;
+                            rgba[idx + 2] = 166;
+                            rgba[idx + 3] = 255;
+                        }
+                    }
+                }
+                let icon = tauri::image::Image::new_owned(rgba, width, height);
+                let _ = tray.set_icon(Some(icon));
+            } else {
+                let _ = tray.set_icon(Some(base_icon.clone()));
+            }
+        }
+    }
+    Ok(())
 }
 
 
@@ -1154,8 +1245,26 @@ pub fn run() {
 
             // System tray icon + menu
             let open_item = MenuItem::with_id(app, "open", "Open Devizee", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+            let nav_dashboard = MenuItem::with_id(app, "nav_dashboard", "Dashboard", true, None::<&str>)?;
+            let nav_downloads = MenuItem::with_id(app, "nav_downloads", "Downloads", true, None::<&str>)?;
+            let nav_multimedia = MenuItem::with_id(app, "nav_multimedia", "Multimedia Hub", true, None::<&str>)?;
+            let nav_settings = MenuItem::with_id(app, "nav_settings", "Settings", true, None::<&str>)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Devizee", true, None::<&str>)?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &open_item,
+                    &sep1,
+                    &nav_dashboard,
+                    &nav_downloads,
+                    &nav_multimedia,
+                    &nav_settings,
+                    &sep2,
+                    &quit_item,
+                ],
+            )?;
 
             let icon = app
                 .default_window_icon()
@@ -1174,6 +1283,38 @@ pub fn run() {
                             let _ = win.unminimize();
                             let _ = win.set_focus();
                         }
+                    }
+                    "nav_dashboard" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                        let _ = app.emit("navigate_tab", "dashboard");
+                    }
+                    "nav_downloads" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                        let _ = app.emit("navigate_tab", "downloads");
+                    }
+                    "nav_multimedia" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                        let _ = app.emit("navigate_tab", "multimedia");
+                    }
+                    "nav_settings" => {
+                        if let Some(win) = app.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
+                        let _ = app.emit("navigate_tab", "settings");
                     }
                     "quit" => {
                         app.exit(0);
@@ -1272,6 +1413,7 @@ pub fn run() {
             bridge::get_installed_browsers,
             scan_local_folder,
             get_video_thumbnail,
+            update_tray_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

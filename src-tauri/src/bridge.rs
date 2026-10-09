@@ -175,6 +175,84 @@ fn handle_bridge_connection(
         return;
     }
 
+    if path == "/history" {
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            if let Ok(conn) = state.db_conn.lock() {
+                if let Ok(recs) = crate::db::get_all_downloads(&conn) {
+                    let body = serde_json::to_string(&recs).unwrap_or_else(|_| "[]".to_string());
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+                        body.len(),
+                        cors_headers,
+                        body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    let _ = stream.flush();
+                    return;
+                }
+            }
+        }
+        let body = "[]";
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            body.len(),
+            cors_headers,
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    if method == "POST" && path == "/open-file" {
+        if let Some(body_start) = req.find("\r\n\r\n") {
+            let body = &req[body_start + 4..];
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+                if let Some(p) = v.get("path").and_then(|x| x.as_str()) {
+                    use tauri_plugin_opener::OpenerExt;
+                    let _ = app.opener().open_path(p, None::<&str>);
+                }
+            }
+        }
+        let body = serde_json::json!({"success": true}).to_string();
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            body.len(),
+            cors_headers,
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    if method == "POST" && path == "/open-folder" {
+        if let Some(body_start) = req.find("\r\n\r\n") {
+            let body = &req[body_start + 4..];
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+                if let Some(p) = v.get("path").and_then(|x| x.as_str()) {
+                    use tauri_plugin_opener::OpenerExt;
+                    let path_obj = std::path::Path::new(p);
+                    if path_obj.is_file() {
+                        let _ = app.opener().reveal_item_in_dir(p);
+                    } else {
+                        let _ = app.opener().open_path(p, None::<&str>);
+                    }
+                }
+            }
+        }
+        let body = serde_json::json!({"success": true}).to_string();
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            body.len(),
+            cors_headers,
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
     if method == "POST" && path.starts_with("/download") {
         // Enforce that caller is either a valid extension Origin OR holds the secret token
         if !is_valid_extension_origin && !is_authenticated_token {
@@ -241,6 +319,73 @@ fn handle_bridge_connection(
         }
 
         let body = serde_json::json!({"error": "invalid url"}).to_string();
+        let resp = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            body.len(),
+            cors_headers,
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+        let _ = stream.flush();
+        return;
+    }
+
+    if method == "POST" && (path == "/batch-download" || path == "/batch") {
+        if !is_valid_extension_origin && !is_authenticated_token {
+            let body = serde_json::json!({"error": "unauthorized"}).to_string();
+            let resp = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+                body.len(),
+                cors_headers,
+                body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
+            return;
+        }
+
+        let mut target_urls: Vec<String> = Vec::new();
+
+        if let Some(body_start) = req.find("\r\n\r\n") {
+            let body = &req[body_start + 4..];
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
+                if let Some(arr) = v.get("urls").and_then(|x| x.as_array()) {
+                    for u in arr {
+                        if let Some(s) = u.as_str() {
+                            let clean = s.trim().to_string();
+                            if (clean.starts_with("http://") || clean.starts_with("https://"))
+                                && !crate::is_known_drm_service(&clean)
+                            {
+                                target_urls.push(clean);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !target_urls.is_empty() {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+            let count = target_urls.len();
+            let _ = app.emit("open-batch-urls", target_urls);
+
+            let body = serde_json::json!({"status": "queued", "count": count}).to_string();
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+                body.len(),
+                cors_headers,
+                body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
+            return;
+        }
+
+        let body = serde_json::json!({"error": "no valid urls provided"}).to_string();
         let resp = format!(
             "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
             body.len(),

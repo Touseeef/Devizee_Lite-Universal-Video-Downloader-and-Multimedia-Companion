@@ -30,6 +30,7 @@ import { WaveformVisualizer } from "../common/WaveformVisualizer";
 import { TimeSegmentInput } from "./TimeSegmentInput";
 import type { DownloadRecord, FormatOption, VideoInfo } from "../../types";
 import type { TranslationKey } from "../../lib/i18n";
+import { attachEqualizerToMedia, ensureAudioContext } from "../../lib/audioContext";
 
 export type VideoManagerApi = {
     activeVideoPlaying: boolean;
@@ -156,7 +157,6 @@ export function VideoCard({
         handleStartDownload,
         stopAudioPlayback,
         transitionPlayback,
-        nowPlaying,
         previewTime,
         previewDuration,
         audioRef,
@@ -245,6 +245,13 @@ export function VideoCard({
         }
     }, [videoInfo.id, videoInfo.has_subtitles]);
 
+    useEffect(() => {
+        if (videoElementRef.current) {
+            attachEqualizerToMedia(videoElementRef.current);
+            ensureAudioContext()?.resume().catch(() => {});
+        }
+    }, [videoStreamUrl]);
+
     const toggleSubtitles = () => {
         if (hasSubtitles === false) return;
         const nextState = !includeSubtitles;
@@ -274,6 +281,14 @@ export function VideoCard({
             }
         }
     }, [includeSubtitles, customSubtitleUrl, activeVideoPlaying]);
+
+    useEffect(() => {
+        return () => {
+            if (activeVideoPlaying) {
+                transitionPlayback({ type: "none" });
+            }
+        };
+    }, [activeVideoPlaying, transitionPlayback]);
 
     const handleRefreshStream = async () => {
         setIsRefreshingStream(true);
@@ -408,11 +423,13 @@ export function VideoCard({
                                                 setVideoPlaybackError(false);
                                                 stopAudioPlayback();
                                                 transitionPlayback({ type: "video", id: videoInfo.id, state: "playing" });
+                                                if (videoElementRef.current) {
+                                                    attachEqualizerToMedia(videoElementRef.current);
+                                                    ensureAudioContext()?.resume().catch(() => {});
+                                                }
                                             }}
                                             onPause={() => {
-                                                if (nowPlaying.type === "video") {
-                                                    transitionPlayback({ type: "video", id: videoInfo.id, state: "paused" });
-                                                }
+                                                transitionPlayback({ type: "video", id: videoInfo.id, state: "paused" });
                                             }}
                                             className="w-full h-full object-contain rounded-xl overflow-hidden"
                                         >
@@ -482,6 +499,10 @@ export function VideoCard({
                                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
                                                     allowFullScreen
                                                     onLoad={() => {
+                                                        try {
+                                                            iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening" }), "*");
+                                                            sendIframeCommand("listening");
+                                                        } catch {}
                                                         const effective = isMuted ? 0 : volume;
                                                         sendIframeCommand("setVolume", [Math.round(effective * 100)]);
                                                         if (isMuted || effective === 0) {
@@ -645,63 +666,68 @@ export function VideoCard({
                         </div>
 
                         {/* Audio Preview Transport Controls & Scrubber (Matching Playlist Panel) */}
-                        {isAudioPreviewing && (
-                            <div className="mt-3 p-3 rounded-xl bg-surface-2/70 border border-border-subtle space-y-2 animate-in fade-in duration-fast">
-                                <div className="flex items-center justify-between text-caption text-secondary font-mono text-[10px]">
-                                    <span className="flex items-center gap-1.5 text-accent font-semibold">
-                                        <Volume2 size={12} className="animate-pulse" />
-                                        <span>Playing Audio Preview</span>
-                                        <WaveformVisualizer
-                                            mediaElement={audioRef.current}
-                                            isPlaying={isAudioElementPlaying}
-                                        />
-                                    </span>
-                                    <span className="font-bold text-primary">
-                                        {formatSeconds(previewTime)} / {formatSeconds(previewDuration || 0)}
-                                    </span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max={previewDuration || 100}
-                                    step="0.5"
-                                    value={previewTime}
-                                    onChange={(e) => handleSeek(parseFloat(e.target.value))}
-                                    className="w-full h-1 cursor-pointer rounded-full outline-none appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:-mt-1"
-                                    style={{
-                                        background: `linear-gradient(to right, var(--color-accent) 0%, var(--color-accent) ${(previewTime / Math.max(1, previewDuration)) * 100}%, var(--color-surface-3) ${(previewTime / Math.max(1, previewDuration)) * 100}%, var(--color-surface-3) 100%)`,
-                                    }}
-                                />
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                        {isAudioPreviewing && (() => {
+                            const effectivePreviewDuration = Number.isFinite(previewDuration) && previewDuration > 0
+                                ? previewDuration
+                                : (videoInfo?.duration || 0);
+                            return (
+                                <div className="mt-3 p-3 rounded-xl bg-surface-2/70 border border-border-subtle space-y-2 animate-in fade-in duration-fast">
+                                    <div className="flex items-center justify-between text-caption text-secondary font-mono text-[10px]">
+                                        <span className="flex items-center gap-1.5 text-accent font-semibold">
+                                            <Volume2 size={12} className="animate-pulse" />
+                                            <span>Playing Audio Preview</span>
+                                            <WaveformVisualizer
+                                                mediaElement={audioRef.current}
+                                                isPlaying={isAudioElementPlaying}
+                                            />
+                                        </span>
+                                        <span className="font-bold text-primary">
+                                            {formatSeconds(previewTime)} / {formatSeconds(effectivePreviewDuration)}
+                                        </span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max={effectivePreviewDuration || 100}
+                                        step="0.5"
+                                        value={previewTime}
+                                        onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                                        className="w-full h-1 cursor-pointer rounded-full outline-none appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:-mt-1"
+                                        style={{
+                                            background: `linear-gradient(to right, var(--color-accent) 0%, var(--color-accent) ${(previewTime / Math.max(1, effectivePreviewDuration)) * 100}%, var(--color-surface-3) ${(previewTime / Math.max(1, effectivePreviewDuration)) * 100}%, var(--color-surface-3) 100%)`,
+                                        }}
+                                    />
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSeekRelative(-10)}
+                                                className="text-[10px] text-secondary hover:text-primary flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-1 border border-border-subtle cursor-pointer hover:border-accent/30 transition-colors"
+                                            >
+                                                <RotateCcw size={10} /> -10s
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSeekRelative(10)}
+                                                className="text-[10px] text-secondary hover:text-primary flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-1 border border-border-subtle cursor-pointer hover:border-accent/30 transition-colors"
+                                            >
+                                                +10s <RotateCw size={10} />
+                                            </button>
+                                        </div>
                                         <button
                                             type="button"
-                                            onClick={() => handleSeekRelative(-10)}
-                                            className="text-[10px] text-secondary hover:text-primary flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-1 border border-border-subtle cursor-pointer hover:border-accent/30 transition-colors"
+                                            onClick={() => {
+                                                stopAudioPlayback();
+                                                transitionPlayback({ type: "none" });
+                                            }}
+                                            className="text-[10px] text-secondary hover:text-status-danger transition-colors cursor-pointer"
                                         >
-                                            <RotateCcw size={10} /> -10s
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSeekRelative(10)}
-                                            className="text-[10px] text-secondary hover:text-primary flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-1 border border-border-subtle cursor-pointer hover:border-accent/30 transition-colors"
-                                        >
-                                            +10s <RotateCw size={10} />
+                                            Dismiss Audio
                                         </button>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            stopAudioPlayback();
-                                            transitionPlayback({ type: "none" });
-                                        }}
-                                        className="text-[10px] text-secondary hover:text-status-danger transition-colors cursor-pointer"
-                                    >
-                                        Dismiss Audio
-                                    </button>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </div>
                 </div>
 
@@ -946,14 +972,14 @@ export function VideoCard({
                         </div>
                     )}
                     {/* Row 3: Destination Folder Selector & Clip Trimmer Button */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2.5 pt-1">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-start gap-2.5 pt-1">
                         {/* Destination Folder */}
-                        <div className="flex-1 min-w-0 space-y-1">
-                            <label className="text-[10px] uppercase font-bold tracking-wider text-tertiary">Destination</label>
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider text-tertiary block leading-none">Destination</label>
                             <button
                                 type="button"
                                 onClick={handleBrowseCustomFolder}
-                                className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption transition-all text-left group cursor-pointer shadow-2xs"
+                                className="w-full h-10 flex items-center justify-between px-3 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption transition-all text-left group cursor-pointer shadow-2xs"
                                 title="Click to choose a custom save folder for this specific file"
                             >
                                 <div className="flex items-center gap-2 min-w-0">
@@ -969,8 +995,8 @@ export function VideoCard({
                         </div>
 
                         {/* Clip Trimmer Action */}
-                        <div className="shrink-0 space-y-1">
-                            <label className="text-[10px] uppercase font-bold tracking-wider text-tertiary">Trim Section</label>
+                        <div className="shrink-0 flex flex-col gap-1">
+                            <label className="text-[10px] uppercase font-bold tracking-wider text-tertiary block leading-none">Trim Section</label>
                             <button
                                 type="button"
                                 onClick={() => {
@@ -979,7 +1005,7 @@ export function VideoCard({
                                         setTrimEnd(videoInfo.duration_string);
                                     }
                                 }}
-                                className={`flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border text-caption font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap ${isTrimming
+                                className={`h-10 flex items-center justify-center gap-1.5 px-3.5 rounded-xl border text-caption font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap ${isTrimming
                                     ? "bg-accent text-white border-accent shadow-xs"
                                     : "bg-surface-2 hover:bg-surface-3 text-secondary hover:text-primary border-border-subtle"
                                     }`}

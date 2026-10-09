@@ -1,11 +1,8 @@
-import { useState } from "react";
 import {
-    AlertTriangle,
     ArrowDownToLine,
     Gauge,
     Pause,
     Play,
-    X,
     XCircle,
     Trash2,
 } from "lucide-react";
@@ -112,49 +109,8 @@ export function DownloadsTab({
     onSpeedLimitChange?: (limit: string) => void;
 }) {
     // F-36: Dismissible interrupted-downloads recovery banner.
-    const [bannerDismissed, setBannerDismissed] = useState(false);
-    const interruptedCount = sortedHistory.filter((h) => h.status === "interrupted").length;
-
     return (
         <div className="max-w-5xl xl:max-w-6xl mx-auto space-y-6">
-            {interruptedCount > 0 && !bannerDismissed && (
-                <div className="bg-status-warning-subtle/40 border border-status-warning/40 rounded-xl p-3.5 flex items-center justify-between gap-3 animate-in fade-in duration-fast">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-status-warning-subtle text-status-warning flex items-center justify-center shrink-0">
-                            <AlertTriangle size={15} />
-                        </div>
-                        <div className="min-w-0">
-                            <p className="text-body-sm font-bold text-primary">
-                                {interruptedCount} paused {interruptedCount === 1 ? "download" : "downloads"}
-                            </p>
-                            <p className="text-caption text-secondary truncate">
-                                These can be resumed at any time. No progress was lost.
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        {onResumeAll && (
-                            <button
-                                type="button"
-                                onClick={onResumeAll}
-                                className="px-3 py-1.5 rounded-lg bg-status-warning hover:bg-status-warning/90 text-white text-caption font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                                title="Resume all paused downloads"
-                            >
-                                <Play size={12} fill="currentColor" />
-                                <span>Resume All</span>
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={() => setBannerDismissed(true)}
-                            className="w-7 h-7 rounded-lg hover:bg-surface-2 text-tertiary hover:text-primary flex items-center justify-center transition-colors cursor-pointer"
-                            title="Dismiss banner"
-                        >
-                            <X size={14} />
-                        </button>
-                    </div>
-                </div>
-            )}
 
             {/* Header Banner */}
             <div className="bg-surface-1 rounded-xl p-5 border border-border-subtle shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -258,7 +214,7 @@ export function DownloadsTab({
                         {/* Bandwidth & Speed Mode Preset Selector */}
                         <div className="flex items-center gap-2">
                             <Gauge size={13} className="text-secondary shrink-0" />
-                            <span className="text-[11px] font-semibold text-secondary shrink-0 hidden sm:inline">Speed:</span>
+                            <span className="text-[11px] font-semibold text-secondary shrink-0 hidden sm:inline">Bandwidth Limit:</span>
                             <select
                                 value={speedLimit || "unlimited"}
                                 onChange={(e) => onSpeedLimitChange?.(e.target.value)}

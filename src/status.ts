@@ -108,7 +108,7 @@ export const STATUS_DISPLAY: Record<TaskStatus, StatusDisplay> = {
   },
   interrupted: {
     label: "Paused",
-    colorToken: "status-warning",
+    colorToken: "text-tertiary",
     progressMode: "hidden",
     isTerminal: false,
   },

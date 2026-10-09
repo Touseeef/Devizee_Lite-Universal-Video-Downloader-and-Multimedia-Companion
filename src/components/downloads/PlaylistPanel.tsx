@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     AlertCircle,
     CheckSquare,
@@ -76,6 +76,26 @@ export function PlaylistPanel({
     audioRef: React.RefObject<HTMLAudioElement | null>;
     activeVideoInfo?: VideoInfo | null;
 }) {
+    // Progressive pagination to eliminate UI lag on large playlists
+    const [visibleCount, setVisibleCount] = useState(20);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+    useEffect(() => {
+        setVisibleCount(20);
+    }, [playlistInfo?.id]);
+
+    const totalEntries = playlistInfo?.entries.length || 0;
+    const displayedEntries = playlistInfo ? playlistInfo.entries.slice(0, visibleCount) : [];
+    const hasMore = visibleCount < totalEntries;
+
+    const handleLoadMore = () => {
+        setIsLoadingMore(true);
+        setTimeout(() => {
+            setVisibleCount((prev) => Math.min(prev + 20, totalEntries));
+            setIsLoadingMore(false);
+        }, 200);
+    };
+
     const formatSeconds = (secs: number) => {
         // W3-6: Guard against NaN/Infinity from live streams or broken durations.
         // Prevents "NaN:NaN" from rendering in the UI.
@@ -364,9 +384,10 @@ export function PlaylistPanel({
                     </div>
 
                     <div className="space-y-2.5 py-1.5">
-                        {playlistInfo.entries.map((entry, idx) => {
+                        {displayedEntries.map((entry, idx) => {
                             const isSelected = selectedIds.has(entry.id);
                             const isThisPreviewing = previewingId === entry.id;
+                            const isHeroActiveTrack = !!(activeVideoInfo && (activeVideoInfo.id === entry.id || activeVideoInfo.url === entry.url));
                             const entryTask = history.find(
                                 (h) => h.id.startsWith(entry.id) || h.url.includes(entry.id)
                             );
@@ -619,7 +640,7 @@ export function PlaylistPanel({
                                             </div>
                                         )}
 
-                                    {isThisPreviewing && (
+                                    {isThisPreviewing && !isHeroActiveTrack && (
                                         <div className="mt-2 pl-8 pr-1 space-y-1.5">
                                             <div className="flex items-center justify-between text-caption text-secondary font-mono text-[10px]">
                                                 <span className="flex items-center gap-1.5 text-accent font-semibold">
@@ -678,6 +699,32 @@ export function PlaylistPanel({
                             );
                         })}
                     </div>
+
+                    {hasMore && (
+                        <div className="flex flex-col items-center justify-center pt-3 pb-1 gap-1.5 border-t border-border-subtle/50 mt-2">
+                            <button
+                                type="button"
+                                disabled={isLoadingMore}
+                                onClick={handleLoadMore}
+                                className="px-5 py-2 rounded-xl bg-surface-2 hover:bg-surface-3 border border-border-subtle text-caption font-bold text-primary hover:text-accent flex items-center gap-2 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
+                            >
+                                {isLoadingMore ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin text-accent" />
+                                        <span>Loading 20 more...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <ListPlus size={14} className="text-accent" />
+                                        <span>Load More (+20 items)</span>
+                                    </>
+                                )}
+                            </button>
+                            <span className="text-[11px] font-mono text-tertiary">
+                                Showing {displayedEntries.length} of {totalEntries} items
+                            </span>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

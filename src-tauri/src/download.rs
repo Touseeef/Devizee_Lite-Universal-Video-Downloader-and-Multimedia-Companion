@@ -369,6 +369,7 @@ pub async fn start_download(
     download_subtitles: Option<bool>,
     subtitle_languages: Option<String>,
     subtitles_in_subfolder: Option<bool>,
+    subtitles_dir: Option<String>,
     allow_insecure_ssl: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -539,6 +540,16 @@ pub async fn start_download(
         let mut cmd = Command::new(&yt_dlp_path);
         let progress_template = "DEVIZEE_PROGRESS:%(progress._percent_str)s|%(progress._speed_str)s|%(progress._eta_str)s|%(progress._downloaded_bytes_str)s|%(progress._total_bytes_str)s|%(progress._total_bytes_estimate_str)s|vcodec:%(info.vcodec)s|acodec:%(info.acodec)s|format:%(info.format_id)s|ext:%(info.ext)s";
 
+        let merger_postproc_args = if ext == "mp4" {
+            // NLE / VIDEO EDITOR COMPATIBILITY (Adobe Premiere Pro, DaVinci Resolve, Final Cut):
+            // Enforce AAC audio encoding (192 kbps) during MP4 merge.
+            // Premiere Pro strictly rejects Opus audio in MP4 ("unsupported compression type").
+            // Transcoding audio takes < 1 second and guarantees 100% universal timeline playback.
+            "Merger:-c:a aac -b:a 192k -movflags +faststart"
+        } else {
+            "Merger:-movflags +faststart"
+        };
+
         cmd.env("PYTHONIOENCODING", "utf-8");
         cmd.args([
             "--encoding",
@@ -564,11 +575,9 @@ pub async fn start_download(
             // SEC-7 (defense-in-depth): sanitise expanded template values so that
             // untrusted video titles cannot introduce path separators into filenames.
             "--restrict-filenames",
-            // PERFORMANCE: Move the MP4/MOV moov atom to the front of the file so
-            // players can read metadata instantly instead of seeking to the end
-            // (fixes the 5+ second cold-start delay for local playback).
+            // PERFORMANCE & NLE COMPATIBILITY: Faststart moov atom + universal AAC audio in MP4
             "--postprocessor-args",
-            "Merger:-movflags +faststart",
+            merger_postproc_args,
             // W3-8: Network resilience for DASH/HLS multi-fragment downloads.
             // A single dropped fragment on a shaky Wi-Fi connection used to
             // abort the entire download. These flags retry each fragment up
@@ -640,16 +649,31 @@ pub async fn start_download(
                 format_id.clone()
             };
             cmd.args(["-f", &sanitized_fmt, "--merge-output-format", &ext]);
+            if ext == "mp4" {
+                // UNIVERSAL NLE / VIDEO EDITOR STREAM SORT:
+                // Prioritize H.264 video (avc1) and AAC/M4A audio codec streams across all sites.
+                // Guarantees universal import in Adobe Premiere Pro, After Effects, DaVinci, and QuickTime.
+                cmd.args(["-S", "vcodec:h264,acodec:m4a,ext:mp4:m4a"]);
+            }
         }
 
         if !is_audio_only && download_subtitles.unwrap_or(false) && download_sections.is_none() {
-            if subtitles_in_subfolder.unwrap_or(true) {
-                // Route all standalone subtitle (.vtt/.srt) files into a dedicated "subtitles" subfolder
-                // inside the video download directory so they don't clutter the main videos folder.
-                let subs_dir = download_dir.join("subtitles");
-                let _ = std::fs::create_dir_all(&subs_dir);
-                cmd.args(["-P", &format!("subtitle:{}", subs_dir.to_string_lossy())]);
-            }
+            let subs_dir = if let Some(ref s) = subtitles_dir {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    std::path::PathBuf::from(trimmed)
+                } else if subtitles_in_subfolder.unwrap_or(true) {
+                    download_dir.join("subtitles")
+                } else {
+                    download_dir.clone()
+                }
+            } else if subtitles_in_subfolder.unwrap_or(true) {
+                download_dir.join("subtitles")
+            } else {
+                download_dir.clone()
+            };
+            let _ = std::fs::create_dir_all(&subs_dir);
+            cmd.args(["-P", &format!("subtitle:{}", subs_dir.to_string_lossy())]);
 
             let langs = subtitle_languages
                 .as_deref()

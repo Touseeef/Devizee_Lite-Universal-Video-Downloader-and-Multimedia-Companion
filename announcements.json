@@ -1,0 +1,27 @@
+[
+  {
+    "id": "ann-v052-launch",
+    "date": "2026-10-04",
+    "type": "update",
+    "tag": "New Release",
+    "tagColor": "indigo",
+    "version": "v0.5.2",
+    "title": "Devizee Lite v0.5.2 is Live! 🚀",
+    "summary": "Batch Link Collector radar, real-time 8-band Equalizer, and zero-lag dragging.",
+    "content": "### Welcome to Devizee Lite v0.5.2!\n\nHere is what's new in this release:\n- **Batch Link Collector (Radar)**: Click multiple videos or links on any webpage to queue them in batch without interrupting playback.\n- **Real-Time Audio Equalizer**: 8-band parametric EQ with pre-built audio presets (Bass Boost, Vocal Booster, Flat, and more).\n- **Zero-Lag Draggable UI**: Butter-smooth dragging for the floating grabber pill and batch radar banner.\n- **Smart Thumbnail Detection**: Clicking video thumbnails on YouTube accurately grabs the full video title instead of duration badges.\n- **Privacy-First**: No tracking, no telemetry, all state preserved locally.",
+    "action": {
+      "label": "View Release Notes",
+      "url": "https://github.com/Touseeef/devizee-lite-universal-video-downloader/releases"
+    }
+  },
+  {
+    "id": "ann-tip-theatre",
+    "date": "2026-10-03",
+    "type": "tip",
+    "tag": "Pro Tip",
+    "tagColor": "emerald",
+    "title": "Pro Tip: Distraction-Free Theatre Mode 🎬",
+    "summary": "Darken the interface for an immersive listening and viewing experience.",
+    "content": "Did you know? In the **Multimedia Hub**, clicking the **Theatre Mode** button dims all surrounding interface elements.\n\nCombine Theatre Mode with your favorite Audio Equalizer preset for high-fidelity, distraction-free listening!"
+  }
+]

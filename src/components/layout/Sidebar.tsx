@@ -1,6 +1,7 @@
 // src/components/layout/Sidebar.tsx
 import type { RefObject } from "react";
 import {
+    Bell,
     Download,
     Film,
     Gauge,
@@ -45,6 +46,8 @@ export function Sidebar({
     playSource = "none",
     previewingId = null,
     t,
+    unreadAnnouncementsCount = 0,
+    onOpenAnnouncements,
 }: {
     collapsed?: boolean;
     onToggleCollapse?: () => void;
@@ -68,6 +71,8 @@ export function Sidebar({
     previewingId?: string | null;
     t?: (key: TranslationKey) => string;
     onOpenWelcome?: () => void;
+    unreadAnnouncementsCount?: number;
+    onOpenAnnouncements?: () => void;
 }) {
     const pillVisible = nowPlaying.type !== "none";
     const pillPlaying = pillVisible && nowPlaying.state === "playing";
@@ -116,6 +121,20 @@ export function Sidebar({
                 </button>
 
                 <div className="flex items-center gap-1 shrink-0">
+                    {onOpenAnnouncements && (
+                        <button
+                            type="button"
+                            onClick={onOpenAnnouncements}
+                            className="relative p-1 rounded-md text-tertiary hover:text-accent hover:bg-surface-2 transition-colors cursor-pointer"
+                            title={unreadAnnouncementsCount > 0 ? `Announcements & Updates (${unreadAnnouncementsCount} new)` : "Announcements & Updates"}
+                        >
+                            <Bell size={15} />
+                            {unreadAnnouncementsCount > 0 && (
+                                <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-accent ring-2 ring-surface-1 animate-pulse" />
+                            )}
+                        </button>
+                    )}
+
                     {onOpenWelcome && (
                         <button
                             type="button"
@@ -211,9 +230,9 @@ export function Sidebar({
                             </span>
                             <WaveformVisualizer
                                 mediaElement={
-                                    nowPlaying.type === "audio"
-                                        ? audioRef.current
-                                        : videoElementRef.current
+                                    nowPlaying.source === "dashboard"
+                                        ? (nowPlaying.type === "audio" ? audioRef.current : videoElementRef.current)
+                                        : null
                                 }
                                 isPlaying={pillPlaying}
                             />

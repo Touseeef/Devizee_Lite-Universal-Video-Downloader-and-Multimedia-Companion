@@ -5,7 +5,7 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
-import { AlertCircle, KeyRound, ExternalLink, ShieldAlert, X, Sparkles, Globe } from "lucide-react";
+import { AlertCircle, KeyRound, ExternalLink, ShieldAlert, X, Sparkles, Globe, Sliders } from "lucide-react";
 
 import { ErrorBoundary } from "./ErrorBoundary";
 
@@ -28,7 +28,7 @@ import {
   isAudioFormat,
 } from "./lib/formatClassify";
 import { createTranslator } from "./lib/i18n";
-import { globalAudioState, routeAudioDevice, applyEqualizerPreset, attachEqualizerToMedia } from "./lib/audioContext";
+import { globalAudioState, routeAudioDevice, applyEqualizerPreset, attachEqualizerToMedia, ensureAudioContext } from "./lib/audioContext";
 
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { CloseAppConfirmDialog } from "./components/common/CloseAppConfirmDialog";
@@ -51,6 +51,14 @@ import { ClipboardHud } from "./components/hud/ClipboardHud";
 import { BatchQueuePanel, type BatchItem } from "./components/downloads/BatchQueuePanel";
 import { WelcomeModal } from "./components/common/WelcomeModal";
 import { SupportedSitesModal } from "./components/common/SupportedSitesModal";
+import { AnnouncementsDrawer } from "./components/common/AnnouncementsDrawer";
+import {
+  fetchAnnouncements,
+  markAnnouncementAsRead,
+  markAllAnnouncementsAsRead,
+  getUnreadAnnouncementsCount,
+  type AnnouncementItem,
+} from "./lib/announcements";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { useThemeManager } from "./hooks/useThemeManager";
 import { useVolumeControl } from "./hooks/useVolumeControl";
@@ -100,6 +108,11 @@ export default function App() {
   // Supported Sites & DRM Policy guide modal
   const [isSupportedSitesOpen, setIsSupportedSitesOpen] = useState(false);
 
+  // Developer Announcements & Updates Drawer state
+  const [isAnnouncementsOpen, setIsAnnouncementsOpen] = useState(false);
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [unreadAnnouncementsCount, setUnreadAnnouncementsCount] = useState(0);
+
   // Playlist states
   const [playlistInfo, setPlaylistInfo] = useState<PlaylistInfo | null>(null);
   const [showPlaylistSection, setShowPlaylistSection] = useState(true);
@@ -129,8 +142,10 @@ export default function App() {
   const retryAttemptsRef = useRef<Map<string, number>>(new Map());
   const historyRef = useRef<DownloadRecord[]>([]);
   const handleRetryDownloadRef = useRef<((rec: DownloadRecord) => void) | null>(null);
+  const analysisSeqRef = useRef<number>(0);
 
   const resetInput = () => {
+    analysisSeqRef.current++;
     setUrl("");
     setFetchError("");
     setSelectedFormat(null);
@@ -146,6 +161,12 @@ export default function App() {
     if (videoElementRef.current) {
       try { videoElementRef.current.pause(); } catch {}
     }
+    if (audioRef.current) {
+      try { audioRef.current.pause(); } catch {}
+    }
+    setisAudioElementPlaying(false);
+    setPreviewingId(null);
+    setActiveAudioPlaying(null);
     sendIframeCommand("pauseVideo");
     setNowPlaying({ type: "none" });
     nowPlayingRef.current = { type: "none" };
@@ -281,6 +302,22 @@ export default function App() {
       console.error("Device enumeration error:", e);
     }
   };
+
+  // Hook 8-band Equalizer to Dashboard Audio Preview and Direct Video playback elements
+  useEffect(() => {
+    if (audioRef.current) {
+      ensureAudioContext();
+      attachEqualizerToMedia(audioRef.current);
+    }
+  }, [audioRef.current]);
+
+  useEffect(() => {
+    if (videoElementRef.current) {
+      ensureAudioContext();
+      attachEqualizerToMedia(videoElementRef.current);
+    }
+  }, [videoElementRef.current]);
+
   // W2-9: expose folder/file openers globally so PlaylistPanel chips can
   // trigger the same behavior without prop drilling.
   useEffect(() => {
@@ -331,10 +368,27 @@ export default function App() {
     return localStorage.getItem("devizee_eq_preset") || "flat";
   });
 
+  // Equalizer YouTube Sandbox Notice Toast
+  const [eqWarningToast, setEqWarningToast] = useState<string | null>(null);
+  const eqWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isYouTubePlaying = nowPlaying.type === "video" && (nowPlaying.state === "playing" || activeVideoPlaying) && nowPlaying.source !== "multimedia";
+
+  const triggerEqYouTubeWarning = useCallback(() => {
+    if (eqWarningTimerRef.current) clearTimeout(eqWarningTimerRef.current);
+    setEqWarningToast("Equalizer does not work with live YouTube video streams. Go for Audio Preview instead or Multimedia Hub.");
+    eqWarningTimerRef.current = setTimeout(() => {
+      setEqWarningToast(null);
+    }, 4500);
+  }, []);
+
   const handleEqPresetChange = (presetId: string) => {
     setSelectedEqPreset(presetId);
     if (presetId !== "custom") {
       applyEqualizerPreset(presetId);
+    }
+    if (isYouTubePlaying) {
+      triggerEqYouTubeWarning();
     }
   };
 
@@ -393,6 +447,8 @@ export default function App() {
     formatLabel: string;
   } | null>(null);
 
+  const [isMultimediaTheater, setIsMultimediaTheater] = useState(false);
+
   // User Settings State
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem("devizee_settings");
@@ -414,6 +470,7 @@ export default function App() {
       documentsFolder: "",
       compressedFolder: "",
       programsFolder: "",
+      subtitlesFolder: "",
       tempFolder: "",
       autoOrganize: true,
 
@@ -477,6 +534,40 @@ export default function App() {
       localStorage.setItem("devizee_settings", JSON.stringify(next));
       return next;
     });
+  };
+
+  // Anonymously fetch developer announcements on boot
+  useEffect(() => {
+    if (isHud) return;
+    if (settings.enableAnnouncements === false) return;
+
+    let isMounted = true;
+    fetchAnnouncements().then((items) => {
+      if (isMounted) {
+        setAnnouncements(items);
+        setUnreadAnnouncementsCount(getUnreadAnnouncementsCount(items));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isHud, settings.enableAnnouncements]);
+
+  const handleRefreshAnnouncements = async () => {
+    const items = await fetchAnnouncements(true);
+    setAnnouncements(items);
+    setUnreadAnnouncementsCount(getUnreadAnnouncementsCount(items));
+  };
+
+  const handleMarkAnnouncementRead = (id: string) => {
+    const updatedRead = markAnnouncementAsRead(id);
+    setUnreadAnnouncementsCount(getUnreadAnnouncementsCount(announcements, updatedRead));
+  };
+
+  const handleMarkAllAnnouncementsRead = () => {
+    markAllAnnouncementsAsRead(announcements);
+    setUnreadAnnouncementsCount(0);
   };
 
   // Custom Hooks: Modular Theme, Network, and Consolidated Volume Management
@@ -581,6 +672,12 @@ export default function App() {
     const saved = localStorage.getItem("devizee_zoom");
     return saved ? Math.min(140, Math.max(75, parseInt(saved, 10) || 100)) : 100;
   });
+
+  const handleZoomChange = (next: number) => {
+    const clamped = Math.min(140, Math.max(75, next));
+    setZoomLevel(clamped);
+    localStorage.setItem("devizee_zoom", String(clamped));
+  };
 
   useEffect(() => {
     (document.documentElement.style as any).zoom = "";
@@ -705,7 +802,7 @@ export default function App() {
   }, []);
 
   // Browse Folder via plugin-dialog
-  const handleBrowseFolder = async (key: "saveFolder" | "videoFolder" | "audioFolder" | "documentsFolder" | "generalFolder" | "compressedFolder" | "programsFolder" | "tempFolder") => {
+  const handleBrowseFolder = async (key: "saveFolder" | "videoFolder" | "audioFolder" | "documentsFolder" | "generalFolder" | "compressedFolder" | "programsFolder" | "subtitlesFolder" | "tempFolder") => {
     try {
       const selected = await open({
         directory: true,
@@ -939,6 +1036,28 @@ export default function App() {
     };
   }, []);
 
+  // System Tray Navigation Listener
+  useEffect(() => {
+    if (isHud) return;
+
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
+
+    listen<string>("navigate_tab", (event) => {
+      if (event.payload && (event.payload === "dashboard" || event.payload === "downloads" || event.payload === "multimedia" || event.payload === "settings")) {
+        setActiveTab(event.payload as any);
+      }
+    }).then((f) => {
+      if (disposed) f();
+      else unlistenFn = f;
+    });
+
+    return () => {
+      disposed = true;
+      if (unlistenFn) unlistenFn();
+    };
+  }, [isHud]);
+
   // SC-1: Sleep/wake listener (F-01: race-safe cleanup)
   useEffect(() => {
     // SC-2: HUD does not need to know about system wake events.
@@ -948,12 +1067,6 @@ export default function App() {
     let unlistenFn: (() => void) | null = null;
 
     listen("system-woke-from-sleep", () => {
-      if (settings.showNotifications) {
-        sendNotification({
-          title: "Devizee - Downloads Paused After Sleep",
-          body: "Your system woke from sleep. Interrupted downloads can be resumed from the Downloads tab.",
-        });
-      }
       loadHistory();
     }).then((f) => {
       if (disposed) f();
@@ -1122,15 +1235,18 @@ export default function App() {
     const interval = setInterval(() => {
       if (videoElementRef.current) {
         setPreviewTime(videoElementRef.current.currentTime);
-        if (videoElementRef.current.duration) {
-          setPreviewDuration(videoElementRef.current.duration);
+        const vDur = videoElementRef.current.duration;
+        if (Number.isFinite(vDur) && vDur > 0) {
+          setPreviewDuration(vDur);
+        } else if (videoInfo?.duration && videoInfo.duration > 0) {
+          setPreviewDuration(videoInfo.duration);
         }
       }
       // Removed the 'else' block that artificially increments previewTime for iframes.
       // We now strictly rely on YouTube's 'infoDelivery' messages to update previewTime.
     }, 500);
     return () => clearInterval(interval);
-  }, [activeVideoPlaying, nowPlaying]);
+  }, [activeVideoPlaying, nowPlaying, videoInfo?.duration]);
 
   // F-02: On iframe focus, stop audio but DO NOT assert video is playing.
   // The YouTube postMessage listener will fire `infoDelivery` with
@@ -1238,15 +1354,7 @@ export default function App() {
           clearTimeout(notificationTimer.current);
           notificationTimer.current = setTimeout(flushNotifications, 1800);
         } else if (p.status === "interrupted" && oldStatus !== "interrupted") {
-          const wasUserPaused = userPausedTaskIds.current.has(p.task_id);
-          if (wasUserPaused) {
-            userPausedTaskIds.current.delete(p.task_id);
-          } else if (settings.showNotifications) {
-            sendNotification({
-              title: "Devizee - Download Interrupted",
-              body: "A download was interrupted. Open the Downloads tab to resume, restart, or cancel it.",
-            });
-          }
+          userPausedTaskIds.current.delete(p.task_id);
         }
 
         if (idx === -1) {
@@ -1523,7 +1631,9 @@ function detectAudioMime(arr: Uint8Array): string {
   const handleAudioTimeUpdate = () => {
     if (audioRef.current) {
       setPreviewTime(audioRef.current.currentTime);
-      setPreviewDuration(audioRef.current.duration || 0);
+      const rawDur = audioRef.current.duration;
+      const validDur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : (videoInfo?.duration || 0);
+      setPreviewDuration(validDur);
     }
   };
 
@@ -1664,10 +1774,59 @@ function detectAudioMime(arr: Uint8Array): string {
     setter(formatSecondsToTime(nextSecs, totalMax >= 3600));
   };
 
+  // Known unsupported / DRM-protected subscription streaming services
+  const DRM_DOMAINS = [
+    { domain: "netflix.com", name: "Netflix" },
+    { domain: "disneyplus.com", name: "Disney+" },
+    { domain: "primevideo.com", name: "Amazon Prime Video" },
+    { domain: "amazon.com/gp/video", name: "Amazon Prime Video" },
+    { domain: "amazon.com/video", name: "Amazon Prime Video" },
+    { domain: "hulu.com", name: "Hulu" },
+    { domain: "hbomax.com", name: "Max (HBO)" },
+    { domain: "max.com", name: "Max (HBO)" },
+    { domain: "tv.apple.com", name: "Apple TV+" },
+    { domain: "peacocktv.com", name: "Peacock" },
+    { domain: "paramountplus.com", name: "Paramount+" },
+    { domain: "open.spotify.com", name: "Spotify Web Player" },
+    { domain: "deezer.com", name: "Deezer Web Player" },
+  ];
+
   // URL Analysis Logic - Robust for single videos, YouTube mixes, playlists, and keyword search
   async function analyzeUrl(rawInput: string, browserOverride?: string) {
     const clean = rawInput.trim();
     if (!clean) return;
+
+    const thisSeq = ++analysisSeqRef.current;
+
+    // Immediately stop any active media playback from the previous analyzed item
+    if (audioRef.current && !audioRef.current.paused) {
+      try { audioRef.current.pause(); } catch { }
+    }
+    if (videoElementRef.current && !videoElementRef.current.paused) {
+      try { videoElementRef.current.pause(); } catch { }
+    }
+    sendIframeCommand("pauseVideo");
+    transitionPlayback({ type: "none" });
+
+    // Instantly check for known DRM-protected subscription sites
+    const lowerClean = clean.toLowerCase();
+    const matchedDrm = DRM_DOMAINS.find(d => lowerClean.includes(d.domain));
+    if (matchedDrm) {
+      setSearchResults(null);
+      setSelectedFormat(null);
+      setVideoInfo(null);
+      setPlaylistInfo(null);
+      setSelectedPlaylistItems(new Set());
+      setActiveCardTaskId(null);
+      setActiveVideoPlaying(false);
+      setVideoStreamUrl(null);
+      setIsVideoLoading(false);
+      setIsFetching(false);
+      setFetchError(
+        `DRM_PROTECTED: ${matchedDrm.name} is a subscription streaming service protected by hardware DRM (Widevine / PlayReady). Devizee complies with copyright standards and cannot download from ${matchedDrm.name}. Supported platforms include YouTube, Vimeo, TikTok, X/Twitter, Instagram, Facebook, Reddit, SoundCloud, and thousands of public video/audio web sources.`
+      );
+      return;
+    }
 
     // Check if input is a direct URL or a keyword search for YouTube
     const isUrl = /^https?:\/\//i.test(clean) ||
@@ -1688,15 +1847,19 @@ function detectAudioMime(arr: Uint8Array): string {
       setIsFetching(true);
       try {
         const results = await invoke<PlaylistEntry[]>("search_youtube", { query: clean });
+        if (thisSeq !== analysisSeqRef.current) return;
         setSearchResults(results);
         if (!results || results.length === 0) {
           setFetchError(`No YouTube results found for "${clean}".`);
         }
       } catch (err: any) {
+        if (thisSeq !== analysisSeqRef.current) return;
         setFetchError(`YouTube search error: ${err.toString()}`);
       } finally {
-        setIsSearchingYoutube(false);
-        setIsFetching(false);
+        if (thisSeq === analysisSeqRef.current) {
+          setIsSearchingYoutube(false);
+          setIsFetching(false);
+        }
       }
       return;
     }
@@ -1747,6 +1910,7 @@ function detectAudioMime(arr: Uint8Array): string {
 
         const plPromise = invoke<PlaylistInfo>("fetch_playlist_info", { url: plUrl })
           .then((plInfo) => {
+            if (thisSeq !== analysisSeqRef.current) return;
             setPlaylistInfo(plInfo);
             setShowPlaylistSection(true);
             // Default select only the active song, not the whole playlist
@@ -1760,7 +1924,9 @@ function detectAudioMime(arr: Uint8Array): string {
             console.error("Playlist error:", plErr);
           })
           .finally(() => {
-            setIsLoadingPlaylist(false);
+            if (thisSeq === analysisSeqRef.current) {
+              setIsLoadingPlaylist(false);
+            }
           });
 
         if (videoId) {
@@ -1770,6 +1936,7 @@ function detectAudioMime(arr: Uint8Array): string {
             cookies_from_browser: effectiveBrowser,
             allow_insecure_ssl: settings.allowInsecureSSL || false,
           });
+          if (thisSeq !== analysisSeqRef.current) return;
           setVideoInfo(info);
           if (info.duration_string && info.duration_string !== "--:--") {
             setTrimEnd(info.duration_string);
@@ -1782,6 +1949,7 @@ function detectAudioMime(arr: Uint8Array): string {
           cookies_from_browser: effectiveBrowser,
           allow_insecure_ssl: settings.allowInsecureSSL || false,
         });
+        if (thisSeq !== analysisSeqRef.current) return;
         setVideoInfo(info);
         if (info.duration_string && info.duration_string !== "--:--") {
           setTrimEnd(info.duration_string);
@@ -1792,12 +1960,14 @@ function detectAudioMime(arr: Uint8Array): string {
           cookies_from_browser: effectiveBrowser,
           allow_insecure_ssl: settings.allowInsecureSSL || false,
         });
+        if (thisSeq !== analysisSeqRef.current) return;
         setVideoInfo(info);
         if (info.duration_string && info.duration_string !== "--:--") {
           setTrimEnd(info.duration_string);
         }
       }
     } catch (err: any) {
+      if (thisSeq !== analysisSeqRef.current) return;
       const errStr = err ? err.toString() : "Unknown error";
       if (errStr.includes("DRM_PROTECTED")) {
         setFetchError("DRM_PROTECTED: This media or streaming platform uses hardware-level DRM encryption (Widevine / PlayReady). Devizee complies with copyright standards and cannot download from subscription streaming services.");
@@ -1807,7 +1977,9 @@ function detectAudioMime(arr: Uint8Array): string {
         setFetchError(errStr);
       }
     } finally {
-      setIsFetching(false);
+      if (thisSeq === analysisSeqRef.current) {
+        setIsFetching(false);
+      }
     }
   }
 
@@ -1867,7 +2039,7 @@ function detectAudioMime(arr: Uint8Array): string {
     }
 
     const defaultFmt: FormatOption = {
-      format_id: "bestvideo[height<=1080]+bestaudio/best",
+      format_id: "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best",
       label: "1080p (Full HD)",
       ext: "mp4",
       is_audio_only: false,
@@ -1925,6 +2097,27 @@ function detectAudioMime(arr: Uint8Array): string {
       }
     }
   };
+
+  // Listen for batch URLs sent from Devizee browser companion extension
+  useEffect(() => {
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
+
+    listen<string[]>("open-batch-urls", (event) => {
+      if (event.payload && Array.isArray(event.payload) && event.payload.length > 0) {
+        handleImportTxtLines(event.payload);
+        setActiveTab("dashboard");
+      }
+    }).then((f) => {
+      if (disposed) f();
+      else unlistenFn = f;
+    });
+
+    return () => {
+      disposed = true;
+      if (unlistenFn) unlistenFn();
+    };
+  }, [batchQueueItems]);
 
   const handleStartBatchQueue = async (items: BatchItem[]) => {
     for (const item of items) {
@@ -2098,6 +2291,7 @@ function detectAudioMime(arr: Uint8Array): string {
         downloadSubtitles: downloadSubtitlesOverride !== undefined ? downloadSubtitlesOverride : (settings.downloadSubtitles ?? true),
         subtitleLanguages: settings.subtitleLanguages || "all",
         subtitlesInSubfolder: settings.subtitlesInSubfolder ?? true,
+        subtitlesDir: settings.subtitlesFolder || null,
         allowInsecureSsl: settings.allowInsecureSSL || false,
         cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
@@ -2183,6 +2377,7 @@ function detectAudioMime(arr: Uint8Array): string {
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
         subtitlesInSubfolder: settings.subtitlesInSubfolder ?? true,
+        subtitlesDir: settings.subtitlesFolder || null,
         allowInsecureSsl: settings.allowInsecureSSL || false,
         cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
@@ -2200,12 +2395,12 @@ function detectAudioMime(arr: Uint8Array): string {
   // W2-10: Single source of truth for preset → yt-dlp format mapping
   const presetToFormat = (presetId: string): { formatId: string; ext: string; isAudio: boolean; label: string } => {
     const map: Record<string, { formatId: string; ext: string; isAudio: boolean; label: string }> = {
-      "4k": { formatId: "bestvideo[height<=2160]+bestaudio/best[height<=2160]", ext: "mp4", isAudio: false, label: "4K Video (MP4)" },
-      "1440p": { formatId: "bestvideo[height<=1440]+bestaudio/best[height<=1440]", ext: "mp4", isAudio: false, label: "1440p Video (MP4)" },
-      "1080p": { formatId: "bestvideo[height<=1080]+bestaudio/best[height<=1080]", ext: "mp4", isAudio: false, label: "1080p Video (MP4)" },
-      "720p": { formatId: "bestvideo[height<=720]+bestaudio/best[height<=720]", ext: "mp4", isAudio: false, label: "720p Video (MP4)" },
-      "480p": { formatId: "bestvideo[height<=480]+bestaudio/best[height<=480]", ext: "mp4", isAudio: false, label: "480p Video (MP4)" },
-      "360p": { formatId: "bestvideo[height<=360]+bestaudio/best[height<=360]", ext: "mp4", isAudio: false, label: "360p Video (MP4)" },
+      "4k": { formatId: "bestvideo[height<=2160]+bestaudio[ext=m4a]/bestvideo[height<=2160]+bestaudio/best", ext: "mp4", isAudio: false, label: "4K Video (MP4)" },
+      "1440p": { formatId: "bestvideo[height<=1440]+bestaudio[ext=m4a]/bestvideo[height<=1440]+bestaudio/best", ext: "mp4", isAudio: false, label: "1440p Video (MP4)" },
+      "1080p": { formatId: "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best", ext: "mp4", isAudio: false, label: "1080p Video (MP4)" },
+      "720p": { formatId: "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720]+bestaudio/best", ext: "mp4", isAudio: false, label: "720p Video (MP4)" },
+      "480p": { formatId: "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=480]+bestaudio/best", ext: "mp4", isAudio: false, label: "480p Video (MP4)" },
+      "360p": { formatId: "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=360]+bestaudio/best", ext: "mp4", isAudio: false, label: "360p Video (MP4)" },
       "mp3": { formatId: "bestaudio/best", ext: "mp3", isAudio: true, label: "MP3 Audio (320 kbps)" },
       "m4a": { formatId: "bestaudio/best", ext: "m4a", isAudio: true, label: "M4A Audio (AAC)" },
       "flac": { formatId: "bestaudio/best", ext: "flac", isAudio: true, label: "FLAC Audio (Lossless)" },
@@ -2295,6 +2490,7 @@ function detectAudioMime(arr: Uint8Array): string {
         downloadSubtitles: settings.downloadSubtitles !== false,
         subtitleLanguages: settings.subtitleLanguages || "all",
         subtitlesInSubfolder: settings.subtitlesInSubfolder ?? true,
+        subtitlesDir: settings.subtitlesFolder || null,
         allowInsecureSsl: settings.allowInsecureSSL || false,
         cookiesFromBrowser: settings.cookiesFromBrowser !== "none" ? settings.cookiesFromBrowser : null,
       });
@@ -2407,12 +2603,14 @@ function detectAudioMime(arr: Uint8Array): string {
           setisAudioElementPlaying(false);
           setActiveAudioPlaying(null);
           setPreviewingId(null);
-          if (videoInfo) {
-            transitionPlayback({ type: "video", id: videoInfo.id, state: "playing" });
+          const vidId = videoInfo?.id || (nowPlayingRef.current.type === "video" ? nowPlayingRef.current.id : "hero-video");
+          if (vidId) {
+            transitionPlayback({ type: "video", id: vidId, state: "playing" });
           }
-        } else if (ytState === 2) { // Paused
-          if (videoInfo && nowPlayingRef.current.type === "video") {
-            transitionPlayback({ type: "video", id: videoInfo.id, state: "paused" });
+        } else if (ytState === 2 || ytState === -1 || ytState === 5) { // Paused / Unstarted / Cued
+          const vidId = videoInfo?.id || (nowPlayingRef.current.type === "video" ? nowPlayingRef.current.id : "hero-video");
+          if (vidId && nowPlayingRef.current.type === "video") {
+            transitionPlayback({ type: "video", id: vidId, state: "paused" });
           }
         } else if (ytState === 0) { // Ended
           handleVideoEnded();
@@ -2422,6 +2620,21 @@ function detectAudioMime(arr: Uint8Array): string {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [videoInfo, transitionPlayback, handleVideoEnded]);
+
+  // YouTube IFrame player state sync poller: actively polls getPlayerState to ensure
+  // pause/play transitions inside the embedded iframe instantly update the UI (sidebar pill & waveform)
+  useEffect(() => {
+    if (nowPlaying.type !== "video") return;
+    const interval = setInterval(() => {
+      try {
+        if (iframeRef.current?.contentWindow) {
+          iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: "listening" }), "*");
+          sendIframeCommand("getPlayerState");
+        }
+      } catch { }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [nowPlaying.type, sendIframeCommand]);
 
   // Status counters & Queue actions via custom hook
   const {
@@ -2448,6 +2661,16 @@ function detectAudioMime(arr: Uint8Array): string {
     handleRetryDownload,
     userPausedTaskIds,
   });
+
+  // Dynamically update system tray status (progress bar / active indicator / error dot / tooltip)
+  useEffect(() => {
+    const hasActualError = history.some((h) => h.status === "error");
+    invoke("update_tray_status", {
+      activeCount,
+      percent: firstActiveDownload?.percent ?? 0,
+      hasError: hasActualError,
+    }).catch(() => { });
+  }, [activeCount, firstActiveDownload?.percent, history]);
 
 
   // Filtered & Sorted history with Real-Time Search & Attention Filter (1h: useMemo)
@@ -2512,6 +2735,7 @@ function detectAudioMime(arr: Uint8Array): string {
       mainRef={mainScrollRef}
       minimizeToTray={settings.minimizeToTray}
       onCloseClick={requestAppClose}
+      isTheaterMode={activeTab === "multimedia" && isMultimediaTheater}
       sidebar={(collapsed, onToggleCollapse) => (
         <Sidebar
           collapsed={collapsed}
@@ -2538,6 +2762,8 @@ function detectAudioMime(arr: Uint8Array): string {
           previewingId={previewingId}
           t={t}
           onOpenWelcome={() => setIsWelcomeOpen(true)}
+          unreadAnnouncementsCount={unreadAnnouncementsCount}
+          onOpenAnnouncements={() => setIsAnnouncementsOpen(true)}
         />
       )}
     >
@@ -2548,6 +2774,17 @@ function detectAudioMime(arr: Uint8Array): string {
         crossOrigin="anonymous"
         onPlay={() => {
           setisAudioElementPlaying(true);
+          if (audioRef.current) {
+            attachEqualizerToMedia(audioRef.current);
+            ensureAudioContext()?.resume().catch(() => { });
+          }
+        }}
+        onLoadedMetadata={() => {
+          if (audioRef.current) {
+            const rawDur = audioRef.current.duration;
+            const validDur = Number.isFinite(rawDur) && rawDur > 0 ? rawDur : (videoInfo?.duration || 0);
+            setPreviewDuration(validDur);
+          }
         }}
         onPause={() => {
           setisAudioElementPlaying(false);
@@ -3020,6 +3257,7 @@ function detectAudioMime(arr: Uint8Array): string {
             onToggleMute={toggleMute}
             initialPlayRecord={multimediaTargetRecord}
             onClearInitialPlayRecord={() => setMultimediaTargetRecord(null)}
+            onTheaterModeChange={setIsMultimediaTheater}
           />
         </div>
 
@@ -3044,6 +3282,10 @@ function detectAudioMime(arr: Uint8Array): string {
             onOpenSupportedSites={() => setIsSupportedSitesOpen(true)}
             selectedEqPreset={selectedEqPreset}
             onSelectEqPreset={handleEqPresetChange}
+            isYouTubePlaying={isYouTubePlaying}
+            onEqAttemptWhenUnsupported={triggerEqYouTubeWarning}
+            zoomLevel={zoomLevel}
+            onZoomChange={handleZoomChange}
           />
         </div>
 
@@ -3114,6 +3356,36 @@ function detectAudioMime(arr: Uint8Array): string {
         isOpen={isSupportedSitesOpen}
         onClose={() => setIsSupportedSitesOpen(false)}
       />
+
+      <AnnouncementsDrawer
+        isOpen={isAnnouncementsOpen}
+        onClose={() => setIsAnnouncementsOpen(false)}
+        announcements={announcements}
+        unreadCount={unreadAnnouncementsCount}
+        onRefresh={handleRefreshAnnouncements}
+        onMarkAllRead={handleMarkAllAnnouncementsRead}
+        onMarkRead={handleMarkAnnouncementRead}
+      />
+
+      {/* Floating Notice Toast: Equalizer on YouTube Streams */}
+      {eqWarningToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-lg w-[90%] md:w-auto px-4 py-3 rounded-xl bg-surface-1/95 backdrop-blur-xl border border-amber-500/40 shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="p-2 rounded-lg bg-amber-500/15 text-amber-400 shrink-0">
+            <Sliders size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-caption font-bold text-amber-400">Equalizer Notice</p>
+            <p className="text-[12px] text-secondary leading-snug mt-0.5">{eqWarningToast}</p>
+          </div>
+          <button
+            onClick={() => setEqWarningToast(null)}
+            className="p-1 rounded-md text-tertiary hover:text-primary transition-colors cursor-pointer"
+            title="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </AppShell>
   );
 }
