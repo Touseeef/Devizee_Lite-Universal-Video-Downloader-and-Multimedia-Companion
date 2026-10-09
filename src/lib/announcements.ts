@@ -19,7 +19,7 @@ export interface AnnouncementItem {
 }
 
 const GITHUB_ANNOUNCEMENTS_URL =
-    "https://raw.githubusercontent.com/Touseeef/devizee-lite-universal-video-downloader/main/announcements.json";
+    "https://raw.githubusercontent.com/Touseeef/Devizee_Lite-Universal-Video-Downloader-and-Multimedia-Companion/main/announcements.json";
 
 const STORAGE_CACHE_KEY = "devizee_announcements_cache";
 const STORAGE_LAST_CHECK_KEY = "devizee_announcements_last_checked";
@@ -46,7 +46,7 @@ Here is what's new in this release:
 - **Privacy-First**: No tracking, no telemetry, all state preserved locally.`,
         action: {
             label: "View Release Notes",
-            url: "https://github.com/Touseeef/devizee-lite-universal-video-downloader/releases",
+            url: "https://github.com/Touseeef/Devizee_Lite-Universal-Video-Downloader-and-Multimedia-Companion/releases",
         },
     },
     {

@@ -11,7 +11,7 @@
     "content": "### Welcome to Devizee Lite v0.5.2!\n\nHere is what's new in this release:\n- **Batch Link Collector (Radar)**: Click multiple videos or links on any webpage to queue them in batch without interrupting playback.\n- **Real-Time Audio Equalizer**: 8-band parametric EQ with pre-built audio presets (Bass Boost, Vocal Booster, Flat, and more).\n- **Zero-Lag Draggable UI**: Butter-smooth dragging for the floating grabber pill and batch radar banner.\n- **Smart Thumbnail Detection**: Clicking video thumbnails on YouTube accurately grabs the full video title instead of duration badges.\n- **Privacy-First**: No tracking, no telemetry, all state preserved locally.",
     "action": {
       "label": "View Release Notes",
-      "url": "https://github.com/Touseeef/devizee-lite-universal-video-downloader/releases"
+      "url": "https://github.com/Touseeef/Devizee_Lite-Universal-Video-Downloader-and-Multimedia-Companion/releases"
     }
   },
   {
